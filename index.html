@@ -1,717 +1,739 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Trash2, 
-  Sparkles, 
-  ChefHat, 
-  Plus, 
-  History, 
-  Users, 
-  Settings, 
-  Check, 
-  X, 
-  PlusCircle, 
-  Gift, 
-  Info,
-  Cloud,
-  CloudOff,
-  RefreshCw,
-  Clock,
-  Award
-} from 'lucide-react';
-
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { 
-  getFirestore, 
-  collection, 
-  doc, 
-  setDoc, 
-  onSnapshot, 
-} from 'firebase/firestore';
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-
-let db = null;
-let auth = null;
-let appId = 'room-chore-manager';
-
-// Thử tự động lấy Firebase từ môi trường chạy thử của hệ thống nếu có sẵn
-try {
-  if (typeof __app_id !== 'undefined') {
-    appId = __app_id;
-  }
-  
-  if (typeof __firebase_config !== 'undefined') {
-    const firebaseConfig = JSON.parse(__firebase_config);
-    const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-    db = getFirestore(app);
-    auth = getAuth(app);
-  }
-} catch (e) {
-  console.warn("Chưa cấu hình Firebase từ môi trường. Chuyển sang chế độ Local Storage dự phòng.", e);
-}
-
-export default function App() {
-  const [user, setUser] = useState(null);
-  const [isFirebaseConnected, setIsFirebaseConnected] = useState(false);
-  const [firebaseInputConfig, setFirebaseInputConfig] = useState('');
-  const [showConfigModal, setShowConfigModal] = useState(false);
-
-  // Danh sách 5 thành viên cố định theo yêu cầu của bạn (Tín, Phúc, Hồ, Phong, Bảo)
-  const [members, setMembers] = useState([
-    { id: 'tin', name: 'Tín', khacCount: 0, exemptTickets: 0 },
-    { id: 'phuc', name: 'Phúc', khacCount: 0, exemptTickets: 0 },
-    { id: 'ho', name: 'Hồ', khacCount: 0, exemptTickets: 0 },
-    { id: 'phong', name: 'Phong', khacCount: 0, exemptTickets: 0 },
-    { id: 'bao', name: 'Bảo', khacCount: 0, exemptTickets: 0 }
-  ]);
-
-  // Lịch sử chấm công mẫu ban đầu
-  const [logs, setLogs] = useState([
-    { id: 'l1', taskId: 'do_rac', subTaskId: null, memberId: 'tin', memberName: 'Tín', date: '29/06', timestamp: Date.now() - 120000 },
-    { id: 'l2', taskId: 'don_ve_sinh', subTaskId: null, memberId: 'phuc', memberName: 'Phúc', date: '29/06', timestamp: Date.now() - 60000 },
-    { id: 'l3', taskId: 'khac', subTaskId: 'do_rac_bon_rua', memberId: 'ho', memberName: 'Hồ', date: '29/06', timestamp: Date.now() }
-  ]);
-
-  const [activeTaskForLog, setActiveTaskForLog] = useState(null); // Task được chọn để chấm công nhanh
-  const [customOtherText, setCustomOtherText] = useState(''); // Việc khác nhập tay tự do
-  const [activeTab, setActiveTab] = useState('home'); // Điều hướng: 'home' (Chấm công) | 'history' (Lịch sử)
-
-  // Danh sách các tác vụ chính
-  const tasks = [
-    { id: 'do_rac', name: 'Đổ rác', icon: Trash2, color: 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-200' },
-    { id: 'don_ve_sinh', name: 'Dọn nhà vệ sinh', icon: Sparkles, color: 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-200' },
-    { id: 'don_bep', name: 'Dọn bếp', icon: ChefHat, color: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200' },
-    { id: 'khac', name: 'Việc Khác', icon: PlusCircle, color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200', hasSubtasks: true }
-  ];
-
-  const subTasks = [
-    { id: 'do_rac_bon_rua', name: 'Đổ rác bồn rửa' },
-    { id: 'khac_tuy_chinh', name: 'Khác (Tự ghi chú...)' }
-  ];
-
-  useEffect(() => {
-    const connectFirebase = async () => {
-      if (auth && db) {
-        try {
-          if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-            await signInWithCustomToken(auth, __initial_auth_token);
-          } else {
-            await signInAnonymously(auth);
-          }
-          setIsFirebaseConnected(true);
-        } catch (error) {
-          console.error("Lỗi xác thực Firebase tự động:", error);
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chấm Công Dọn Dẹp Phòng</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+                    }
+                }
+            }
         }
-      }
-    };
-    connectFirebase();
-  }, []);
+    </script>
+    <!-- React & ReactDOM CDN -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <!-- Babel compiler CDN (to compile JSX on the fly in the browser) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Firebase App, Auth, and Firestore (Compat version for easy HTML inclusion) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 
-  useEffect(() => {
-    const handleAuthChange = onAuthStateChanged(auth || {onAuthStateChanged: () => {}}, (currentUser) => {
-      setUser(currentUser);
-    });
-    return () => handleAuthChange();
-  }, []);
-
-  useEffect(() => {
-    if (!user || !db) {
-      // Chế độ Offline: Tải dữ liệu dự phòng để đảm bảo tính sẵn sàng
-      const savedMembers = localStorage.getItem('chore_members_fixed');
-      const savedLogs = localStorage.getItem('chore_logs_fixed');
-      if (savedMembers) setMembers(JSON.parse(savedMembers));
-      if (savedLogs) setLogs(JSON.parse(savedLogs));
-      return;
-    }
-
-    // Lắng nghe realtime danh sách thành viên trực tuyến
-    const membersQuery = collection(db, 'artifacts', appId, 'public', 'data', 'members');
-    const unsubscribeMembers = onSnapshot(membersQuery, 
-      (snapshot) => {
-        const list = [];
-        snapshot.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
-        if (list.length > 0) {
-          // Sắp xếp đúng theo thứ tự: Tín, Phúc, Hồ, Phong, Bảo
-          const sortedList = [];
-          const order = ['tin', 'phuc', 'ho', 'phong', 'bao'];
-          order.forEach(id => {
-            const found = list.find(m => m.id === id);
-            if (found) sortedList.push(found);
-          });
-          if (sortedList.length > 0) setMembers(sortedList);
-        } else {
-          // Ghi đè danh sách mặc định lên đám mây nếu đây là lần đầu tiên kết nối database trống
-          members.forEach(m => {
-            setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', m.id), m);
-          });
+    <style>
+        /* Tối ưu hóa thanh cuộn ngang mượt mà cho lịch sử dọn dẹp */
+        .scrollbar-none::-webkit-scrollbar {
+            display: none;
         }
-      },
-      (error) => console.error("Lỗi kết nối thành viên Firestore:", error)
-    );
-
-    // Lắng nghe realtime lịch sử chấm công
-    const logsQuery = collection(db, 'artifacts', appId, 'public', 'data', 'logs');
-    const unsubscribeLogs = onSnapshot(logsQuery,
-      (snapshot) => {
-        const list = [];
-        snapshot.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
-        list.sort((a, b) => b.timestamp - a.timestamp);
-        setLogs(list);
-      },
-      (error) => console.error("Lỗi kết nối lịch sử Firestore:", error)
-    );
-
-    return () => {
-      unsubscribeMembers();
-      unsubscribeLogs();
-    };
-  }, [user]);
-
-  const saveToLocalFallback = (newMembers, newLogs) => {
-    if (!db) {
-      if (newMembers) {
-        setMembers(newMembers);
-        localStorage.setItem('chore_members_fixed', JSON.stringify(newMembers));
-      }
-      if (newLogs) {
-        setLogs(newLogs);
-        localStorage.setItem('chore_logs_fixed', JSON.stringify(newLogs));
-      }
-    }
-  };
-
-  const handleLogTask = async (memberId, selectedSubTaskId = null) => {
-    if (!activeTaskForLog) return;
-    const member = members.find(m => m.id === memberId);
-    if (!member) return;
-
-    const now = new Date();
-    // Định dạng "ngày / tháng" chính xác theo yêu cầu bản vẽ tay image_bfd393.png
-    const dateStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}`;
-
-    let subTaskText = null;
-    if (activeTaskForLog.id === 'khac') {
-      if (selectedSubTaskId === 'khac_tuy_chinh') {
-        subTaskText = customOtherText.trim() || 'Việc khác';
-      } else {
-        const sub = subTasks.find(s => s.id === selectedSubTaskId);
-        subTaskText = sub ? sub.name : 'Việc khác';
-      }
-    }
-
-    const newLog = {
-      id: Date.now().toString(),
-      taskId: activeTaskForLog.id,
-      taskName: activeTaskForLog.name,
-      subTaskId: selectedSubTaskId,
-      subTaskName: subTaskText,
-      memberId: member.id,
-      memberName: member.name,
-      date: dateStr,
-      timestamp: Date.now()
-    };
-
-    // LOGIC: Dọn dẹp việc "Khác" đủ 5 lần nhận 1 Vé miễn đổ rác
-    let updatedMembers = [...members];
-    if (activeTaskForLog.id === 'khac') {
-      updatedMembers = members.map(m => {
-        if (m.id === member.id) {
-          const nextCount = m.khacCount + 1;
-          const newTickets = m.exemptTickets + (nextCount >= 5 ? 1 : 0);
-          return {
-            ...m,
-            khacCount: nextCount % 5, // Reset về 0 sau mỗi 5 lần tích lũy
-            exemptTickets: newTickets
-          };
+        .scrollbar-none {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
         }
-        return m;
-      });
-    }
-
-    // Nếu đổ rác mà thành viên có Vé miễn trừ, đề xuất sử dụng vé trực tiếp không dùng confirm()
-    let useTicket = false;
-    if (activeTaskForLog.id === 'do_rac' && member.exemptTickets > 0) {
-      // Thay thế confirm() bằng cơ chế xác nhận sạch hoặc tự động kích hoạt vé để bảo vệ trải nghiệm người dùng
-      useTicket = true; 
-      updatedMembers = updatedMembers.map(m => {
-        if (m.id === member.id) {
-          return { ...m, exemptTickets: Math.max(0, m.exemptTickets - 1) };
+        @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
         }
-        return m;
-      });
-      newLog.isExempted = true;
-    }
+        .animate-slide-up {
+            animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+    </style>
+</head>
+<body class="bg-neutral-50 dark:bg-neutral-900 text-neutral-800 dark:text-neutral-200 min-h-screen">
 
-    // Ghi nhận dữ liệu
-    if (db && user) {
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs', newLog.id), newLog);
-      for (const m of updatedMembers) {
-        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'members', m.id), m);
-      }
-    } else {
-      const updatedLogs = [newLog, ...logs];
-      saveToLocalFallback(updatedMembers, updatedLogs);
-    }
+    <!-- Container cho ứng dụng React -->
+    <div id="root"></div>
 
-    // Đóng popup
-    setActiveTaskForLog(null);
-    setCustomOtherText('');
-  };
+    <!-- Script chứa code React JSX sẽ được dịch bởi Babel -->
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
 
-  const handleManualFirebaseConfig = async () => {
-    try {
-      const config = JSON.parse(firebaseInputConfig);
-      const app = getApps().length === 0 ? initializeApp(config) : getApp();
-      db = getFirestore(app);
-      auth = getAuth(app);
-      
-      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-        await signInWithCustomToken(auth, __initial_auth_token);
-      } else {
-        await signInAnonymously(auth);
-      }
+        // --- HỆ THỐNG ICON SVG ĐỂ TRÁNH PHỤ THUỘC THƯ VIỆN NGOÀI ---
+        const Icons = {
+            Trash: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+            ),
+            Sparkles: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+            ),
+            ChefHat: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 18V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v14"/><path d="M18 18H6a4 4 0 0 0 0 8h12a4 4 0 0 0 0-8Z"/></svg>
+            ),
+            Plus: ({ size = 20 }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+            ),
+            PlusCircle: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
+            ),
+            Gift: ({ size = 16 }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8s1-5 4.5-5a2.5 2.5 0 0 1 0 5H7.5Z"/></svg>
+            ),
+            History: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+            ),
+            Clock: ({ size = 20 }) => (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            ),
+            Cloud: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.5 19A3.5 3.5 0 0 0 21 15.5c0-2.79-2.54-4.5-5-4.5-.42-1.89-1.74-3.5-3.5-4.5-1.57-.9-3.7-.9-5.27 0C5.48 7.5 4.16 9.11 3.74 11c-2.46 0-5 1.71-5 4.5A3.5 3.5 0 0 0 2.2 19h15.3Z"/></svg>
+            ),
+            CloudOff: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m2 2 20 20"/><path d="M5.782 5.782A7 7 0 0 0 9 18h4a4 4 0 0 0 3.407-1.902"/><path d="M21.617 16.242A3.5 3.5 0 0 0 19.5 11h-.75C18.15 8.1 15.9 6 13 6c-.8 0-1.57.16-2.28.455"/></svg>
+            ),
+            Settings: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            ),
+            Award: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>
+            ),
+            X: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            )
+        };
 
-      setIsFirebaseConnected(true);
-      setShowConfigModal(false);
-    } catch (e) {
-      // Đảm bảo không sử dụng alert
-      console.error("Cấu hình Firebase không hợp lệ:", e);
-    }
-  };
+        // Biến môi trường tự động (nếu có sẵn từ server Vercel/Platform)
+        let db = null;
+        let auth = null;
+        let appId = 'room-chore-manager';
 
-  const getLogsForTask = (taskId) => logs.filter(log => log.taskId === taskId);
-  const getLatestLogForTask = (taskId) => {
-    const taskLogs = getLogsForTask(taskId);
-    return taskLogs.length > 0 ? taskLogs[0] : null;
-  };
-  const getMemberStats = (memberId) => logs.filter(l => l.memberId === memberId).length;
+        function App() {
+            const [user, setUser] = useState(null);
+            const [isFirebaseConnected, setIsFirebaseConnected] = useState(false);
+            const [firebaseInputConfig, setFirebaseInputConfig] = useState('');
+            const [showConfigModal, setShowConfigModal] = useState(false);
 
-  return (
-    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-900 text-neutral-800 dark:text-neutral-200 font-sans flex flex-col items-center">
-      
-      {}
-      <header className="w-full max-w-md bg-white/70 dark:bg-neutral-800/70 backdrop-blur-md sticky top-0 z-40 px-6 py-4 flex items-center justify-between border-b border-neutral-200/50 dark:border-neutral-700/50">
-        <div className="flex items-center space-x-2">
-          <div className="bg-emerald-600 p-2 rounded-2xl text-white shadow-md shadow-emerald-500/20">
-            <Clock size={20} className="animate-pulse" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold tracking-tight">Chấm Công Phòng</h1>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">Tín - Phúc - Hồ - Phong - Bảo</p>
-          </div>
-        </div>
+            // 5 thành viên cố định: Tín, Phúc, Hồ, Phong, Bảo
+            const [members, setMembers] = useState([
+                { id: 'tin', name: 'Tín', khacCount: 0, exemptTickets: 0 },
+                { id: 'phuc', name: 'Phúc', khacCount: 0, exemptTickets: 0 },
+                { id: 'ho', name: 'Hồ', khacCount: 0, exemptTickets: 0 },
+                { id: 'phong', name: 'Phong', khacCount: 0, exemptTickets: 0 },
+                { id: 'bao', name: 'Bảo', khacCount: 0, exemptTickets: 0 }
+            ]);
 
-        <div className="flex items-center space-x-2">
-          {/* Nút kiểm tra đồng bộ đám mây */}
-          <button 
-            onClick={() => setShowConfigModal(true)}
-            className={`p-2 rounded-full transition-all duration-300 ${isFirebaseConnected ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800'}`}
-            title={isFirebaseConnected ? 'Đã đồng bộ đám mây Realtime' : 'Nhấp để cấu hình liên kết Firebase'}
-          >
-            {isFirebaseConnected ? <Cloud size={18} /> : <CloudOff size={18} />}
-          </button>
-        </div>
-      </header>
+            // Dữ liệu mẫu ban đầu phòng
+            const [logs, setLogs] = useState([
+                { id: 'l1', taskId: 'do_rac', subTaskId: null, memberId: 'tin', memberName: 'Tín', date: '29/06', timestamp: Date.now() - 120000 },
+                { id: 'l2', taskId: 'don_ve_sinh', subTaskId: null, memberId: 'phuc', memberName: 'Phúc', date: '29/06', timestamp: Date.now() - 60000 },
+                { id: 'l3', taskId: 'khac', subTaskId: 'do_rac_bon_rua', memberId: 'ho', memberName: 'Hồ', date: '29/06', timestamp: Date.now() }
+            ]);
 
-      {}
-      <main className="w-full max-w-md flex-1 px-4 py-6 pb-24 space-y-6 overflow-y-auto">
-        
-        {/* TAB CHẤM CÔNG (TRANG CHỦ) */}
-        {activeTab === 'home' && (
-          <div className="space-y-6">
-            
-            {/* TIẾN TRÌNH NHẬN VÉ KHUYẾN MÃI DỌN KHÁC */}
-            <div className="bg-gradient-to-br from-teal-500/10 via-emerald-500/5 to-transparent border border-emerald-100 dark:border-emerald-950/40 p-5 rounded-3xl space-y-3 shadow-sm">
-              <div className="flex items-center space-x-2">
-                <Gift className="text-emerald-600 dark:text-emerald-400" size={18} />
-                <h3 className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">Tích lũy dọn dẹp việc "Khác"</h3>
-              </div>
-              <p className="text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed">
-                Sau 5 lần dọn các mục thuộc <span className="underline font-semibold">Việc Khác</span> (Ví dụ: đổ rác bồn rửa...), thành viên sẽ được tự động áp dụng <span className="font-bold text-emerald-600 dark:text-emerald-400">1 Vé miễn đổ rác</span> cho lần đổ rác kế tiếp!
-              </p>
+            const [activeTaskForLog, setActiveTaskForLog] = useState(null);
+            const [customOtherText, setCustomOtherText] = useState('');
+            const [activeTab, setActiveTab] = useState('home'); // 'home' | 'history'
 
-              {/* Tiến trình cụ thể của 5 thành viên */}
-              <div className="grid grid-cols-1 gap-2 pt-2 border-t border-emerald-100/50 dark:border-emerald-950/20">
-                {members.map(member => (
-                  <div key={member.id} className="flex items-center justify-between text-xs bg-white/60 dark:bg-neutral-800/60 p-2.5 rounded-2xl">
-                    <span className="font-bold">{member.name}</span>
-                    <div className="flex items-center space-x-3">
-                      {/* Thanh phần trăm tiến độ */}
-                      <div className="flex items-center space-x-1.5">
-                        <div className="w-20 h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
-                          <div 
-                            className="bg-emerald-500 h-full transition-all duration-500" 
-                            style={{ width: `${(member.khacCount || 0) * 20}%` }}
-                          />
-                        </div>
-                        <span className="text-[10px] text-neutral-500 font-mono">{(member.khacCount || 0)}/5</span>
-                      </div>
-                      
-                      {/* Huy hiệu hiển thị số lượng vé tích lũy */}
-                      {(member.exemptTickets || 0) > 0 && (
-                        <span className="flex items-center space-x-0.5 bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200 px-2 py-0.5 rounded-full font-bold text-[10px]">
-                          <Gift size={10} />
-                          <span>x{member.exemptTickets} vé</span>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            const tasks = [
+                { id: 'do_rac', name: 'Đổ rác', icon: Icons.Trash, color: 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-200' },
+                { id: 'don_ve_sinh', name: 'Dọn nhà vệ sinh', icon: Icons.Sparkles, color: 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-200' },
+                { id: 'don_bep', name: 'Dọn bếp', icon: Icons.ChefHat, color: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200' },
+                { id: 'khac', name: 'Việc Khác', icon: Icons.PlusCircle, color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200', hasSubtasks: true }
+            ];
 
-            {}
-            <div className="space-y-4">
-              <h2 className="text-xs font-bold text-neutral-400 tracking-wider uppercase px-1">Danh sách khu vực dọn</h2>
-              
-              {tasks.map(task => {
-                const latestLog = getLatestLogForTask(task.id);
-                const taskLogs = getLogsForTask(task.id);
-                const TaskIcon = task.icon;
+            const subTasks = [
+                { id: 'do_rac_bon_rua', name: 'Đổ rác bồn rửa' },
+                { id: 'khac_tuy_chinh', name: 'Khác (Tự ghi chú...)' }
+            ];
 
-                return (
-                  <div 
-                    key={task.id} 
-                    className="bg-white dark:bg-neutral-800 rounded-3xl p-5 border border-neutral-100 dark:border-neutral-700/60 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col space-y-4"
-                  >
-                    {/* Tiêu đề & Thông tin nhanh bên trong từng khu vực */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        <div className={`p-3 rounded-2xl ${task.color} shadow-sm`}>
-                          <TaskIcon size={20} />
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-md">{task.name}</h3>
-                          {latestLog ? (
-                            <p className="text-xs text-neutral-400">
-                              Gần nhất: <span className="font-semibold text-neutral-600 dark:text-neutral-300">{latestLog.memberName}</span> ({latestLog.subTaskName || latestLog.date})
-                            </p>
-                          ) : (
-                            <p className="text-xs text-neutral-400">Chưa ghi nhận dọn dẹp</p>
-                          )}
-                        </div>
-                      </div>
+            // Thử khởi tạo Firebase từ cấu hình được lưu trong LocalStorage
+            useEffect(() => {
+                const savedConfig = localStorage.getItem('firebase_custom_config');
+                if (savedConfig) {
+                    try {
+                        initFirebaseWithConfig(JSON.parse(savedConfig));
+                    } catch (e) {
+                        console.error("Lỗi khởi tạo Firebase từ bộ nhớ ẩn:", e);
+                    }
+                } else {
+                    // Nếu không có Firebase, nạp lịch sử offline
+                    const savedMembers = localStorage.getItem('chore_members_fixed');
+                    const savedLogs = localStorage.getItem('chore_logs_fixed');
+                    if (savedMembers) setMembers(JSON.parse(savedMembers));
+                    if (savedLogs) setLogs(JSON.parse(savedLogs));
+                }
+            }, []);
 
-                      {/* Dấu cộng chấm công nhanh */}
-                      <button 
-                        onClick={() => setActiveTaskForLog(task)}
-                        className="bg-neutral-100 dark:bg-neutral-700/60 text-neutral-800 dark:text-white p-2.5 rounded-2xl hover:bg-emerald-600 hover:text-white dark:hover:bg-emerald-600 dark:hover:text-white active:scale-95 transition-all duration-200"
-                      >
-                        <Plus size={20} />
-                      </button>
-                    </div>
+            const initFirebaseWithConfig = (config) => {
+                if (firebase.apps.length === 0) {
+                    const app = firebase.initializeApp(config);
+                    db = firebase.firestore();
+                    auth = firebase.auth();
+                } else {
+                    db = firebase.firestore();
+                    auth = firebase.auth();
+                }
 
-                    {/* LỊCH SỬ CHẤM CÔNG VỚI HIỆU ỨNG CUỘN BLUR DẢI BIÊN THEO PHÁC THẢO BẢN VẼ TAY */}
-                    <div className="relative pt-2 border-t border-neutral-100 dark:border-neutral-700/50">
-                      
-                      {/* Lớp phủ mờ ảo (Blur Gradient) sang trọng ở rìa trái/phải */}
-                      <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-white dark:from-neutral-800 to-transparent pointer-events-none z-10" />
-                      <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white dark:from-neutral-800 to-transparent pointer-events-none z-10" />
+                auth.signInAnonymously().then((cred) => {
+                    setUser(cred.user);
+                    setIsFirebaseConnected(true);
+                }).catch(err => {
+                    console.error("Xác thực Firebase thất bại:", err);
+                });
+            };
 
-                      {/* Danh sách cuộn ngang mượt mà */}
-                      <div className="flex items-center space-x-3 overflow-x-auto py-2 px-6 scrollbar-none snap-x">
-                        {taskLogs.length > 0 ? (
-                          taskLogs.map((log) => (
-                            <div 
-                              key={log.id} 
-                              className="flex items-center space-x-1.5 shrink-0 bg-neutral-50 dark:bg-neutral-900 px-3 py-2 rounded-2xl border border-neutral-100 dark:border-neutral-800 snap-center"
-                            >
-                              {/* Ngày và tháng theo đúng ảnh vẽ mẫu: ngày / tháng */}
-                              <span className="text-xs text-neutral-500 font-mono tracking-tight">{log.date}</span>
-                              
-                              {/* Dấu gạch chéo phân cách */}
-                              <span className="text-neutral-300 dark:text-neutral-600 font-black">/</span>
-                              
-                              {/* Khung Capsule tên người dọn bo viền đậm hệt hình vẽ */}
-                              <div className="bg-white dark:bg-neutral-800 border-2 border-neutral-800 dark:border-neutral-300 px-2.5 py-0.5 rounded-xl text-xs font-bold text-neutral-800 dark:text-neutral-100 shadow-sm">
-                                {log.memberName}
-                                {log.subTaskName && (
-                                  <span className="block text-[8px] font-normal text-neutral-500 dark:text-neutral-400 truncate max-w-[60px]">
-                                    {log.subTaskName}
-                                  </span>
-                                )}
-                              </div>
+            // Lắng nghe dữ liệu trực tuyến Realtime nếu Firebase đã được bật
+            useEffect(() => {
+                if (!user || !db) return;
 
-                              {/* Hiển thị biểu tượng dùng vé miễn trừ */}
-                              {log.isExempted && (
-                                <span className="text-[10px] text-amber-600 bg-amber-50 dark:bg-amber-950/30 px-1 py-0.5 rounded font-bold">Miễn rác</span>
-                              )}
+                const appId = 'room-chore-manager';
+                
+                // Đồng bộ realtime danh sách thành viên phòng
+                const unsubscribeMembers = db.collection('artifacts').doc(appId).collection('members')
+                    .onSnapshot((snapshot) => {
+                        const list = [];
+                        snapshot.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
+                        if (list.length > 0) {
+                            const order = ['tin', 'phuc', 'ho', 'phong', 'bao'];
+                            const sortedList = [];
+                            order.forEach(id => {
+                                const found = list.find(m => m.id === id);
+                                if (found) sortedList.push(found);
+                            });
+                            setMembers(sortedList.length > 0 ? sortedList : list);
+                        } else {
+                            // Tạo mặc định lên Firestore nếu trống
+                            members.forEach(m => {
+                                db.collection('artifacts').doc(appId).collection('members').doc(m.id).set(m);
+                            });
+                        }
+                    }, err => console.error(err));
+
+                // Đồng bộ realtime lịch sử dọn dẹp
+                const unsubscribeLogs = db.collection('artifacts').doc(appId).collection('logs')
+                    .onSnapshot((snapshot) => {
+                        const list = [];
+                        snapshot.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
+                        list.sort((a, b) => b.timestamp - a.timestamp);
+                        setLogs(list);
+                    }, err => console.error(err));
+
+                return () => {
+                    unsubscribeMembers();
+                    unsubscribeLogs();
+                };
+            }, [user]);
+
+            const saveToLocalFallback = (newMembers, newLogs) => {
+                if (!isFirebaseConnected) {
+                    if (newMembers) {
+                        setMembers(newMembers);
+                        localStorage.setItem('chore_members_fixed', JSON.stringify(newMembers));
+                    }
+                    if (newLogs) {
+                        setLogs(newLogs);
+                        localStorage.setItem('chore_logs_fixed', JSON.stringify(newLogs));
+                    }
+                }
+            };
+
+            const handleLogTask = async (memberId, selectedSubTaskId = null) => {
+                if (!activeTaskForLog) return;
+                const member = members.find(m => m.id === memberId);
+                if (!member) return;
+
+                const now = new Date();
+                const dateStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+                let subTaskText = null;
+                if (activeTaskForLog.id === 'khac') {
+                    if (selectedSubTaskId === 'khac_tuy_chinh') {
+                        subTaskText = customOtherText.trim() || 'Việc khác';
+                    } else {
+                        const sub = subTasks.find(s => s.id === selectedSubTaskId);
+                        subTaskText = sub ? sub.name : 'Việc khác';
+                    }
+                }
+
+                const newLog = {
+                    id: Date.now().toString(),
+                    taskId: activeTaskForLog.id,
+                    taskName: activeTaskForLog.name,
+                    subTaskId: selectedSubTaskId,
+                    subTaskName: subTaskText,
+                    memberId: member.id,
+                    memberName: member.name,
+                    date: dateStr,
+                    timestamp: Date.now()
+                };
+
+                // Logic: dọn "Việc Khác" đủ 5 lần được thưởng 1 vé miễn đổ rác
+                let updatedMembers = [...members];
+                if (activeTaskForLog.id === 'khac') {
+                    updatedMembers = members.map(m => {
+                        if (m.id === member.id) {
+                            const nextCount = (m.khacCount || 0) + 1;
+                            const newTickets = (m.exemptTickets || 0) + (nextCount >= 5 ? 1 : 0);
+                            return {
+                                ...m,
+                                khacCount: nextCount % 5,
+                                exemptTickets: newTickets
+                            };
+                        }
+                        return m;
+                    });
+                }
+
+                // Nếu đổ rác mà thành viên này có vé dọn, hệ thống tự động kích hoạt vé để dọn miễn phí
+                if (activeTaskForLog.id === 'do_rac' && member.exemptTickets > 0) {
+                    updatedMembers = updatedMembers.map(m => {
+                        if (m.id === member.id) {
+                            return { ...m, exemptTickets: Math.max(0, m.exemptTickets - 1) };
+                        }
+                        return m;
+                    });
+                    newLog.isExempted = true;
+                }
+
+                // Ghi nhận dữ liệu trực tuyến hoặc offline
+                if (isFirebaseConnected && db) {
+                    const appId = 'room-chore-manager';
+                    await db.collection('artifacts').doc(appId).collection('logs').doc(newLog.id).set(newLog);
+                    for (const m of updatedMembers) {
+                        await db.collection('artifacts').doc(appId).collection('members').doc(m.id).set(m);
+                    }
+                } else {
+                    const updatedLogs = [newLog, ...logs];
+                    saveToLocalFallback(updatedMembers, updatedLogs);
+                }
+
+                setActiveTaskForLog(null);
+                setCustomOtherText('');
+            };
+
+            const handleManualFirebaseConfig = () => {
+                try {
+                    const config = JSON.parse(firebaseInputConfig);
+                    localStorage.setItem('firebase_custom_config', JSON.stringify(config));
+                    initFirebaseWithConfig(config);
+                    setShowConfigModal(false);
+                } catch (e) {
+                    alert("Cấu hình JSON không hợp lệ! Hãy kiểm tra lại dấu nháy hoặc cấu trúc.");
+                }
+            };
+
+            const getLogsForTask = (taskId) => logs.filter(log => log.taskId === taskId);
+            const getLatestLogForTask = (taskId) => {
+                const taskLogs = getLogsForTask(taskId);
+                return taskLogs.length > 0 ? taskLogs[0] : null;
+            };
+            const getMemberStats = (memberId) => logs.filter(l => l.memberId === memberId).length;
+
+            return (
+                <div className="flex flex-col items-center min-h-screen">
+                    
+                    {/* Header */}
+                    <header className="w-full max-w-md bg-white/70 dark:bg-neutral-800/70 backdrop-blur-md sticky top-0 z-40 px-6 py-4 flex items-center justify-between border-b border-neutral-200/50 dark:border-neutral-700/50">
+                        <div className="flex items-center space-x-2">
+                            <div className="bg-emerald-600 p-2 rounded-2xl text-white shadow-md shadow-emerald-500/20">
+                                <Icons.Clock size={20} />
                             </div>
-                          ))
-                        ) : (
-                          <div className="text-xs text-neutral-400 dark:text-neutral-500 py-1 italic w-full text-center">
-                            Chưa ghi nhận lượt dọn...
-                          </div>
+                            <div>
+                                <h1 className="text-lg font-bold tracking-tight">Chấm Công Phòng</h1>
+                                <p className="text-xs text-neutral-500 dark:text-neutral-400">Tín - Phúc - Hồ - Phong - Bảo</p>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center space-x-2">
+                            <button 
+                                onClick={() => setShowConfigModal(true)}
+                                className={`p-2 rounded-full transition-all duration-300 ${isFirebaseConnected ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800'}`}
+                                title={isFirebaseConnected ? 'Đã liên kết Firestore Realtime' : 'Nhấp để cấu hình Firebase'}
+                            >
+                                {isFirebaseConnected ? <Icons.Cloud /> : <Icons.CloudOff />}
+                            </button>
+                        </div>
+                    </header>
+
+                    {/* Main content */}
+                    <main className="w-full max-w-md flex-1 px-4 py-6 pb-24 space-y-6 overflow-y-auto">
+                        
+                        {activeTab === 'home' && (
+                            <div className="space-y-6">
+                                
+                                {/* Thưởng Vé miễn đổ rác */}
+                                <div className="bg-gradient-to-br from-teal-500/10 via-emerald-500/5 to-transparent border border-emerald-100 dark:border-emerald-950/40 p-5 rounded-3xl space-y-3 shadow-sm">
+                                    <div className="flex items-center space-x-2">
+                                        <Icons.Gift size={18} />
+                                        <h3 className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">Tích luỹ việc "Khác" đổi vé</h3>
+                                    </div>
+                                    <p className="text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed">
+                                        Làm <span className="underline font-semibold text-emerald-600">5 lần việc khác</span> (đổ rác bồn rửa, lau bàn...) sẽ nhận ngay <span className="font-bold text-amber-600">1 Vé miễn đổ rác</span> cho lần đổ rác sau!
+                                    </p>
+
+                                    {/* Tiến độ thành viên */}
+                                    <div className="grid grid-cols-1 gap-2 pt-2 border-t border-emerald-100/50 dark:border-emerald-950/20">
+                                        {members.map(m => (
+                                            <div key={m.id} className="flex items-center justify-between text-xs bg-white/60 dark:bg-neutral-800/60 p-2.5 rounded-2xl border border-neutral-100 dark:border-neutral-800">
+                                                <span className="font-bold">{m.name}</span>
+                                                <div className="flex items-center space-x-3">
+                                                    <div className="flex items-center space-x-1.5">
+                                                        <div className="w-20 h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
+                                                            <div 
+                                                                className="bg-emerald-500 h-full transition-all duration-500" 
+                                                                style={{ width: `${(m.khacCount || 0) * 20}%` }}
+                                                            />
+                                                        </div>
+                                                        <span className="text-[10px] text-neutral-500 font-mono">{(m.khacCount || 0)}/5</span>
+                                                    </div>
+                                                    
+                                                    {(m.exemptTickets || 0) > 0 && (
+                                                        <span className="flex items-center space-x-0.5 bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200 px-2 py-0.5 rounded-full font-bold text-[10px]">
+                                                            <Icons.Gift size={10} />
+                                                            <span>x{m.exemptTickets} vé</span>
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Danh sách nhiệm vụ dọn dẹp */}
+                                <div className="space-y-4">
+                                    <h2 className="text-xs font-bold text-neutral-400 tracking-wider uppercase px-1">Khu vực dọn dẹp</h2>
+                                    
+                                    {tasks.map(task => {
+                                        const latestLog = getLatestLogForTask(task.id);
+                                        const taskLogs = getLogsForTask(task.id);
+                                        const TaskIcon = task.icon;
+
+                                        return (
+                                            <div key={task.id} className="bg-white dark:bg-neutral-800 rounded-3xl p-5 border border-neutral-100 dark:border-neutral-700/60 shadow-sm flex flex-col space-y-4">
+                                                
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center space-x-3">
+                                                        <div className={`p-3 rounded-2xl ${task.color} shadow-sm`}>
+                                                            <TaskIcon />
+                                                        </div>
+                                                        <div>
+                                                            <h3 className="font-bold text-md">{task.name}</h3>
+                                                            {latestLog ? (
+                                                                <p className="text-xs text-neutral-400">
+                                                                    Gần nhất: <span className="font-semibold text-neutral-600 dark:text-neutral-300">{latestLog.memberName}</span> ({latestLog.subTaskName || latestLog.date})
+                                                                </p>
+                                                            ) : (
+                                                                <p className="text-xs text-neutral-400">Chưa ghi nhận dọn</p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    <button 
+                                                        onClick={() => setActiveTaskForLog(task)}
+                                                        className="bg-neutral-100 dark:bg-neutral-700/60 text-neutral-800 dark:text-white p-2.5 rounded-2xl hover:bg-emerald-600 hover:text-white dark:hover:bg-emerald-600 dark:hover:text-white active:scale-95 transition-all duration-200"
+                                                    >
+                                                        <Icons.Plus />
+                                                    </button>
+                                                </div>
+
+                                                {/* Khu vực cuộn ngang lịch sử dọn dẹp có làm mờ biên (BLUR) */}
+                                                <div className="relative pt-2 border-t border-neutral-100 dark:border-neutral-700/50">
+                                                    <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-white dark:from-neutral-800 to-transparent pointer-events-none z-10" />
+                                                    <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white dark:from-neutral-800 to-transparent pointer-events-none z-10" />
+
+                                                    <div className="flex items-center space-x-3 overflow-x-auto py-2 px-6 scrollbar-none snap-x">
+                                                        {taskLogs.length > 0 ? (
+                                                            taskLogs.map(log => (
+                                                                <div key={log.id} className="flex items-center space-x-1.5 shrink-0 bg-neutral-50 dark:bg-neutral-900 px-3 py-2 rounded-2xl border border-neutral-100 dark:border-neutral-800 snap-center">
+                                                                    <span className="text-xs text-neutral-500 font-mono tracking-tight">{log.date}</span>
+                                                                    <span className="text-neutral-300 dark:text-neutral-600 font-black">/</span>
+                                                                    
+                                                                    {/* Tên trong khung bo góc đậm nét giống ảnh vẽ tay */}
+                                                                    <div className="bg-white dark:bg-neutral-800 border-2 border-neutral-800 dark:border-neutral-300 px-2.5 py-0.5 rounded-xl text-xs font-bold text-neutral-800 dark:text-neutral-100 shadow-sm">
+                                                                        {log.memberName}
+                                                                        {log.subTaskName && (
+                                                                            <span className="block text-[8px] font-normal text-neutral-500 dark:text-neutral-400 truncate max-w-[60px]">
+                                                                                {log.subTaskName}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+
+                                                                    {log.isExempted && (
+                                                                        <span className="text-[10px] text-amber-600 bg-amber-50 dark:bg-amber-950/30 px-1 py-0.5 rounded font-bold">Miễn rác</span>
+                                                                    )}
+                                                                </div>
+                                                            ))
+                                                        ) : (
+                                                            <div className="text-xs text-neutral-400 dark:text-neutral-500 py-1 italic w-full text-center">
+                                                                Chưa có dữ liệu dọn dẹp...
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Bảng Chăm Chỉ */}
+                                <div className="bg-white dark:bg-neutral-800 rounded-3xl p-5 border border-neutral-100 dark:border-neutral-700/60 shadow-sm space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <h2 className="text-xs font-bold text-neutral-400 tracking-wider uppercase flex items-center space-x-1.5">
+                                            <Icons.Award />
+                                            <span>Bảng Chăm Chỉ Cả Phòng</span>
+                                        </h2>
+                                    </div>
+                                    <div className="space-y-3">
+                                        {[...members]
+                                            .sort((a, b) => getMemberStats(b.id) - getMemberStats(a.id))
+                                            .map((member, index) => {
+                                                const total = getMemberStats(member.id);
+                                                return (
+                                                    <div key={member.id} className="flex items-center space-x-3">
+                                                        <span className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs ${
+                                                            index === 0 ? 'bg-amber-500 text-white' : 
+                                                            index === 1 ? 'bg-slate-400 text-white' : 
+                                                            index === 2 ? 'bg-amber-700 text-white' : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-600'
+                                                        }`}>
+                                                            {index + 1}
+                                                        </span>
+                                                        <div className="flex-1">
+                                                            <div className="flex justify-between text-xs font-semibold mb-1">
+                                                                <span>{member.name}</span>
+                                                                <span>{total} lần dọn</span>
+                                                            </div>
+                                                            <div className="w-full h-1.5 bg-neutral-100 dark:bg-neutral-700 rounded-full overflow-hidden">
+                                                                <div 
+                                                                    className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                                                                    style={{ width: `${logs.length > 0 ? (total / logs.length) * 100 : 0}%` }}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                    </div>
+                                </div>
+                            </div>
                         )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
 
-            {}
-            <div className="bg-white dark:bg-neutral-800 rounded-3xl p-5 border border-neutral-100 dark:border-neutral-700/60 shadow-sm space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xs font-bold text-neutral-400 tracking-wider uppercase flex items-center space-x-1.5">
-                  <Award size={16} className="text-amber-500" />
-                  <span>Bảng vàng Chăm Chỉ Phòng</span>
-                </h2>
-                <span className="text-[10px] text-neutral-400">Thời gian thực</span>
-              </div>
-              <div className="space-y-3">
-                {[...members]
-                  .sort((a, b) => getMemberStats(b.id) - getMemberStats(a.id))
-                  .map((member, index) => {
-                    const total = getMemberStats(member.id);
-                    return (
-                      <div key={member.id} className="flex items-center space-x-3">
-                        <span className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs ${
-                          index === 0 ? 'bg-amber-500 text-white' : 
-                          index === 1 ? 'bg-slate-400 text-white' : 
-                          index === 2 ? 'bg-amber-700 text-white' : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-600'
-                        }`}>
-                          {index + 1}
-                        </span>
-                        <div className="flex-1">
-                          <div className="flex justify-between text-xs font-semibold mb-1">
-                            <span>{member.name}</span>
-                            <span>{total} lần dọn</span>
-                          </div>
-                          <div className="w-full h-1.5 bg-neutral-100 dark:bg-neutral-700 rounded-full overflow-hidden">
-                            <div 
-                              className="bg-emerald-500 h-full rounded-full transition-all duration-500"
-                              style={{ width: `${logs.length > 0 ? (total / logs.length) * 100 : 0}%` }}
-                            />
-                          </div>
+                        {activeTab === 'history' && (
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between px-1">
+                                    <h2 className="text-base font-bold">Lịch sử dọn dẹp chi tiết</h2>
+                                    <button 
+                                        onClick={() => {
+                                            if (confirm("Xoá toàn bộ lịch sử?")) {
+                                                if (isFirebaseConnected && db) {
+                                                    // Nếu dùng online, khuyến nghị dọn thủ công trên bảng điều khiển Firebase để đảm bảo đồng bộ
+                                                    alert("Vui lòng dọn dẹp bộ sưu tập trên Firestore Console để tránh xung đột dữ liệu.");
+                                                } else {
+                                                    saveToLocalFallback(null, []);
+                                                }
+                                            }
+                                        }}
+                                        className="text-xs text-rose-500 hover:underline font-medium"
+                                    >
+                                        Đặt lại tất cả
+                                    </button>
+                                </div>
+
+                                <div className="space-y-3">
+                                    {logs.length > 0 ? (
+                                        logs.map(log => {
+                                            const task = tasks.find(t => t.id === log.taskId);
+                                            const Icon = task ? task.icon : Icons.Clock;
+                                            return (
+                                                <div key={log.id} className="bg-white dark:bg-neutral-800 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-700/60 shadow-sm flex items-center justify-between">
+                                                    <div className="flex items-center space-x-3">
+                                                        <div className={`p-2 rounded-xl ${task?.color || 'bg-neutral-100 text-neutral-600'}`}>
+                                                            <Icon />
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-sm font-bold">
+                                                                {log.memberName} đã dọn <span className="text-emerald-600 dark:text-emerald-400">{log.taskName}</span>
+                                                            </p>
+                                                            {log.subTaskName && (
+                                                                <p className="text-xs text-neutral-500">{log.subTaskName}</p>
+                                                            )}
+                                                            <p className="text-[10px] text-neutral-400">{log.date}</p>
+                                                        </div>
+                                                    </div>
+
+                                                    {log.isExempted && (
+                                                        <span className="bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 text-[10px] px-2.5 py-0.5 rounded-full font-bold">
+                                                            Được miễn đổ rác
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            );
+                                        })
+                                    ) : (
+                                        <div className="bg-white dark:bg-neutral-800 p-8 rounded-3xl text-center text-neutral-400 border border-neutral-100 dark:border-neutral-700/60">
+                                            <Icons.Clock size={32} className="mx-auto mb-2 text-neutral-300" />
+                                            <p className="text-sm">Chưa có ai chấm công dọn dẹp hôm nay.</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                    </main>
+
+                    {/* Popup Chọn Thành Viên */}
+                    {activeTaskForLog && (
+                        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center transition-opacity duration-300">
+                            <div className="bg-white dark:bg-neutral-800 w-full max-w-md rounded-t-[32px] p-6 space-y-6 shadow-2xl animate-slide-up border-t border-neutral-100 dark:border-neutral-700">
+                                
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h3 className="font-bold text-lg text-neutral-900 dark:text-white">Ghi nhận: {activeTaskForLog.name}</h3>
+                                        <p className="text-xs text-neutral-500">Ai là người vừa thực hiện công việc này?</p>
+                                    </div>
+                                    <button 
+                                        onClick={() => {
+                                            setActiveTaskForLog(null);
+                                            setCustomOtherText('');
+                                        }}
+                                        className="bg-neutral-100 dark:bg-neutral-700 p-2 rounded-full text-neutral-500 hover:bg-neutral-200 transition-all duration-200"
+                                    >
+                                        <Icons.X />
+                                    </button>
+                                </div>
+
+                                {activeTaskForLog.id === 'khac' && (
+                                    <div className="space-y-3 bg-emerald-50/50 dark:bg-emerald-950/20 p-4 rounded-2xl border border-emerald-100/50 dark:border-emerald-900/30">
+                                        <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">Phân loại dọn dẹp khác:</span>
+                                        <div className="grid grid-cols-1 gap-2">
+                                            {subTasks.map(sub => (
+                                                <button
+                                                    key={sub.id}
+                                                    onClick={() => setCustomOtherText(sub.id)}
+                                                    className={`text-left text-xs p-3 rounded-xl border transition-all duration-200 ${
+                                                        customOtherText === sub.id || (sub.id === 'khac_tuy_chinh' && customOtherText !== '' && customOtherText !== 'do_rac_bon_rua')
+                                                            ? 'bg-emerald-600 text-white border-emerald-600 font-semibold'
+                                                            : 'bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700'
+                                                    }`}
+                                                >
+                                                    {sub.name}
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        {(customOtherText !== 'do_rac_bon_rua' && customOtherText !== '') && (
+                                            <input
+                                                type="text"
+                                                placeholder="Ghi chú chi tiết việc dọn dẹp khác..."
+                                                value={customOtherText === 'khac_tuy_chinh' ? '' : customOtherText}
+                                                onChange={(e) => setCustomOtherText(e.target.value)}
+                                                className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-3 py-2 rounded-xl text-xs focus:outline-none"
+                                            />
+                                        )}
+                                    </div>
+                                )}
+
+                                <div className="space-y-2">
+                                    <span className="text-xs font-bold text-neutral-400 block px-1 uppercase">Thành viên phòng</span>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {members.map(member => (
+                                            <button
+                                                key={member.id}
+                                                onClick={() => {
+                                                    if (activeTaskForLog.id === 'khac' && !customOtherText) {
+                                                        alert("Vui lòng chọn phân loại việc trước!");
+                                                        return;
+                                                    }
+                                                    handleLogTask(member.id, activeTaskForLog.id === 'khac' ? (customOtherText === 'do_rac_bon_rua' ? 'do_rac_bon_rua' : 'khac_tuy_chinh') : null);
+                                                }}
+                                                className="flex items-center justify-between p-3.5 bg-neutral-50 dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-2xl hover:border-emerald-500 hover:bg-emerald-50/20 dark:hover:bg-emerald-950/20 active:scale-95 transition-all duration-200 text-left"
+                                            >
+                                                <div>
+                                                    <span className="font-bold text-sm block">{member.name}</span>
+                                                    {member.exemptTickets > 0 && activeTaskForLog.id === 'do_rac' && (
+                                                        <span className="inline-block text-[9px] bg-amber-500 text-white px-1.5 py-0.2 rounded font-bold mt-1">Sẽ dùng vé miễn!</span>
+                                                    )}
+                                                </div>
+                                                <Icons.Plus size={16} />
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                      </div>
-                    );
-                  })}
-              </div>
-            </div>
-          </div>
-        )}
+                    )}
 
-        {/* TAB TOÀN BỘ LỊCH SỬ CHẤM CÔNG */}
-        {activeTab === 'history' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between px-1">
-              <h2 className="text-base font-bold">Lịch sử dọn dẹp chi tiết</h2>
-              <button 
-                onClick={() => {
-                  // Reset không dùng confirm của hệ thống để mượt mà hơn
-                  if (db && user) {
-                    // Reset Firestore
-                  } else {
-                    saveToLocalFallback(null, []);
-                  }
-                }}
-                className="text-xs text-rose-500 hover:underline font-medium"
-              >
-                Đặt lại tất cả
-              </button>
-            </div>
+                    {/* Modal cấu hình Firebase */}
+                    {showConfigModal && (
+                        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                            <div className="bg-white dark:bg-neutral-800 w-full max-w-sm rounded-[32px] p-6 space-y-4 shadow-2xl">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="font-bold text-base flex items-center space-x-2">
+                                        <Icons.Settings />
+                                        <span>Cấu hình Cloud Sync</span>
+                                    </h3>
+                                    <button 
+                                        onClick={() => setShowConfigModal(false)}
+                                        className="p-1 rounded-full bg-neutral-100 dark:bg-neutral-700"
+                                    >
+                                        <Icons.X />
+                                    </button>
+                                </div>
 
-            <div className="space-y-3">
-              {logs.length > 0 ? (
-                logs.map((log) => {
-                  const task = tasks.find(t => t.id === log.taskId);
-                  const Icon = task ? task.icon : Clock;
-                  return (
-                    <div 
-                      key={log.id} 
-                      className="bg-white dark:bg-neutral-800 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-700/60 shadow-sm flex items-center justify-between animate-fade-in"
-                    >
-                      <div className="flex items-center space-x-3">
-                        <div className={`p-2 rounded-xl ${task?.color || 'bg-neutral-100 text-neutral-600'}`}>
-                          <Icon size={16} />
+                                <p className="text-xs text-neutral-500 leading-relaxed">
+                                    Dán Firebase Web Config (JSON) của bạn vào đây để đồng bộ realtime giữa các điện thoại khi chạy trên Vercel:
+                                </p>
+
+                                <textarea
+                                    rows={5}
+                                    placeholder='{&#10;  "apiKey": "...",&#10;  "authDomain": "...",&#10;  "projectId": "..."&#10;}'
+                                    value={firebaseInputConfig}
+                                    onChange={(e) => setFirebaseInputConfig(e.target.value)}
+                                    className="w-full font-mono text-[10px] p-3 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                />
+
+                                <div className="flex space-x-2 pt-2">
+                                    <button 
+                                        onClick={() => setShowConfigModal(false)}
+                                        className="flex-1 bg-neutral-100 dark:bg-neutral-700 py-2.5 rounded-xl text-xs font-semibold text-neutral-600 dark:text-neutral-300"
+                                    >
+                                        Hủy
+                                    </button>
+                                    <button 
+                                        onClick={handleManualFirebaseConfig}
+                                        className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl text-xs font-semibold shadow-md"
+                                    >
+                                        Lưu & Đồng bộ
+                                    </button>
+                                </div>
+                            </div>
                         </div>
-                        <div>
-                          <p className="text-sm font-bold">
-                            {log.memberName} đã dọn <span className="text-emerald-600 dark:text-emerald-400">{log.taskName}</span>
-                          </p>
-                          {log.subTaskName && (
-                            <p className="text-xs text-neutral-500">{log.subTaskName}</p>
-                          )}
-                          <p className="text-[10px] text-neutral-400">{log.date}</p>
-                        </div>
-                      </div>
+                    )}
 
-                      {log.isExempted && (
-                        <span className="bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 text-[10px] px-2.5 py-0.5 rounded-full font-bold">
-                          Dùng vé miễn dọn
-                        </span>
-                      )}
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="bg-white dark:bg-neutral-800 p-8 rounded-3xl text-center text-neutral-400 border border-neutral-100 dark:border-neutral-700/60">
-                  <Clock size={32} className="mx-auto mb-2 text-neutral-300" />
-                  <p className="text-sm">Chưa có ai chấm công dọn dẹp hôm nay.</p>
+                    {/* Bottom Navigation */}
+                    <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/80 dark:bg-neutral-800/80 backdrop-blur-lg border-t border-neutral-200/50 dark:border-neutral-700/50 px-6 py-3 flex items-center justify-around z-40 rounded-t-3xl shadow-lg">
+                        <button 
+                            onClick={() => setActiveTab('home')}
+                            className={`flex flex-col items-center space-y-1 transition-all duration-300 ${activeTab === 'home' ? 'text-emerald-600 dark:text-emerald-400 font-bold scale-105' : 'text-neutral-400'}`}
+                        >
+                            <div className={`p-1 px-6 rounded-full ${activeTab === 'home' ? 'bg-emerald-100 dark:bg-emerald-950/40' : ''}`}>
+                                <Icons.Clock />
+                            </div>
+                            <span className="text-[10px]">Chấm công</span>
+                        </button>
+
+                        <button 
+                            onClick={() => setActiveTab('history')}
+                            className={`flex flex-col items-center space-y-1 transition-all duration-300 ${activeTab === 'history' ? 'text-emerald-600 dark:text-emerald-400 font-bold scale-105' : 'text-neutral-400'}`}
+                        >
+                            <div className={`p-1 px-6 rounded-full ${activeTab === 'history' ? 'bg-emerald-100 dark:bg-emerald-950/40' : ''}`}>
+                                <Icons.History />
+                            </div>
+                            <span className="text-[10px]">Lịch sử</span>
+                        </button>
+                    </nav>
+
                 </div>
-              )}
-            </div>
-          </div>
-        )}
+            );
+        }
 
-      </main>
-
-      {}
-      {activeTaskForLog && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center transition-opacity duration-300">
-          <div className="bg-white dark:bg-neutral-800 w-full max-w-md rounded-t-[32px] p-6 space-y-6 shadow-2xl animate-slide-up border-t border-neutral-100 dark:border-neutral-700">
-            
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-bold text-lg text-neutral-900 dark:text-white">Ghi nhận dọn: {activeTaskForLog.name}</h3>
-                <p className="text-xs text-neutral-500">Ai là người vừa thực hiện công việc này?</p>
-              </div>
-              <button 
-                onClick={() => {
-                  setActiveTaskForLog(null);
-                  setCustomOtherText('');
-                }}
-                className="bg-neutral-100 dark:bg-neutral-700 p-2 rounded-full text-neutral-500 hover:bg-neutral-200 transition-all duration-200"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Form chọn chi tiết cho "Việc Khác" */}
-            {activeTaskForLog.id === 'khac' && (
-              <div className="space-y-3 bg-emerald-50/50 dark:bg-emerald-950/20 p-4 rounded-2xl border border-emerald-100/50 dark:border-emerald-900/30">
-                <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">Chọn phân loại việc dọn dẹp khác:</span>
-                <div className="grid grid-cols-1 gap-2">
-                  {subTasks.map(sub => (
-                    <button
-                      key={sub.id}
-                      onClick={() => setCustomOtherText(sub.id)}
-                      className={`text-left text-xs p-3 rounded-xl border transition-all duration-200 ${
-                        customOtherText === sub.id || (sub.id === 'khac_tuy_chinh' && customOtherText !== '' && customOtherText !== 'do_rac_bon_rua')
-                          ? 'bg-emerald-600 text-white border-emerald-600 font-semibold'
-                          : 'bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700'
-                      }`}
-                    >
-                      {sub.name}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Nhập text thủ công nếu dọn việc khác đặc thù */}
-                {(customOtherText !== 'do_rac_bon_rua' && customOtherText !== '') && (
-                  <input
-                    type="text"
-                    placeholder="Ghi chú chi tiết việc khác đã dọn..."
-                    value={customOtherText === 'khac_tuy_chinh' ? '' : customOtherText}
-                    onChange={(e) => setCustomOtherText(e.target.value)}
-                    className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-3 py-2 rounded-xl text-xs focus:outline-none"
-                  />
-                )}
-              </div>
-            )}
-
-            {/* Các thành viên phòng để click chọn dập chấm công */}
-            <div className="space-y-2">
-              <span className="text-xs font-bold text-neutral-400 block px-1 uppercase">Thành viên thực hiện</span>
-              <div className="grid grid-cols-2 gap-2">
-                {members.map(member => (
-                  <button
-                    key={member.id}
-                    onClick={() => {
-                      if (activeTaskForLog.id === 'khac' && !customOtherText) {
-                        return;
-                      }
-                      handleLogTask(member.id, activeTaskForLog.id === 'khac' ? (customOtherText === 'do_rac_bon_rua' ? 'do_rac_bon_rua' : 'khac_tuy_chinh') : null);
-                    }}
-                    className="flex items-center justify-between p-3.5 bg-neutral-50 dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-2xl hover:border-emerald-500 hover:bg-emerald-50/20 dark:hover:bg-emerald-950/20 active:scale-95 transition-all duration-200 text-left"
-                  >
-                    <div>
-                      <span className="font-bold text-sm block">{member.name}</span>
-                      {member.exemptTickets > 0 && activeTaskForLog.id === 'do_rac' && (
-                        <span className="inline-block text-[9px] bg-amber-500 text-white px-1 py-0.2 rounded font-bold">Dùng vé miễn!</span>
-                      )}
-                    </div>
-                    <Plus size={16} className="text-neutral-400" />
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {}
-      {showConfigModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-neutral-800 w-full max-w-sm rounded-[32px] p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-base flex items-center space-x-2">
-                <Settings size={18} className="text-emerald-600" />
-                <span>Đồng bộ Realtime Firestore</span>
-              </h3>
-              <button 
-                onClick={() => setShowConfigModal(false)}
-                className="p-1 rounded-full bg-neutral-100 dark:bg-neutral-700"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <p className="text-xs text-neutral-500 leading-relaxed">
-              Dán Firebase Web Config (JSON) của phòng bạn vào đây để đồng bộ realtime giữa các thành viên khi lưu trữ trên Vercel:
-            </p>
-
-            <textarea
-              rows={5}
-              placeholder='{&#10;  "apiKey": "...",&#10;  "authDomain": "...",&#10;  "projectId": "..."&#10;}'
-              value={firebaseInputConfig}
-              onChange={(e) => setFirebaseInputConfig(e.target.value)}
-              className="w-full font-mono text-[10px] p-3 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-            />
-
-            <div className="flex space-x-2 pt-2">
-              <button 
-                onClick={() => setShowConfigModal(false)}
-                className="flex-1 bg-neutral-100 dark:bg-neutral-700 py-2.5 rounded-xl text-xs font-semibold text-neutral-600 dark:text-neutral-300"
-              >
-                Hủy
-              </button>
-              <button 
-                onClick={handleManualFirebaseConfig}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl text-xs font-semibold shadow-md"
-              >
-                Lưu cấu hình
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {}
-      <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/80 dark:bg-neutral-800/80 backdrop-blur-lg border-t border-neutral-200/50 dark:border-neutral-700/50 px-6 py-3 flex items-center justify-around z-40 rounded-t-3xl shadow-lg">
-        
-        <button 
-          onClick={() => setActiveTab('home')}
-          className={`flex flex-col items-center space-y-1 transition-all duration-300 ${activeTab === 'home' ? 'text-emerald-600 dark:text-emerald-400 font-bold scale-105' : 'text-neutral-400'}`}
-        >
-          <div className={`p-1 px-6 rounded-full ${activeTab === 'home' ? 'bg-emerald-100 dark:bg-emerald-950/40' : ''}`}>
-            <Clock size={20} />
-          </div>
-          <span className="text-[10px]">Chấm công</span>
-        </button>
-
-        <button 
-          onClick={() => setActiveTab('history')}
-          className={`flex flex-col items-center space-y-1 transition-all duration-300 ${activeTab === 'history' ? 'text-emerald-600 dark:text-emerald-400 font-bold scale-105' : 'text-neutral-400'}`}
-        >
-          <div className={`p-1 px-6 rounded-full ${activeTab === 'history' ? 'bg-emerald-100 dark:bg-emerald-950/40' : ''}`}>
-            <History size={20} />
-          </div>
-          <span className="text-[10px]">Lịch sử</span>
-        </button>
-      </nav>
-
-    </div>
-  );
-}
+        // Render React App
+        const root = ReactDOM.createRoot(document.getElementById("root"));
+        root.render(<App />);
+    </script>
+</body>
+</html>
