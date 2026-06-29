@@ -21,15 +21,14 @@
     <!-- React & ReactDOM CDN -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-    <!-- Babel compiler CDN (to compile JSX on the fly in the browser) -->
+    <!-- Babel compiler CDN -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Firebase App, Auth, and Firestore (Compat version for easy HTML inclusion) -->
+    <!-- Firebase App, Auth, and Firestore -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 
     <style>
-        /* Tối ưu hóa thanh cuộn ngang mượt mà cho lịch sử dọn dẹp */
         .scrollbar-none::-webkit-scrollbar {
             display: none;
         }
@@ -48,14 +47,11 @@
 </head>
 <body class="bg-neutral-50 dark:bg-neutral-900 text-neutral-800 dark:text-neutral-200 min-h-screen">
 
-    <!-- Container cho ứng dụng React -->
     <div id="root"></div>
 
-    <!-- Script chứa code React JSX sẽ được dịch bởi Babel -->
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        // --- HỆ THỐNG ICON SVG ĐỂ TRÁNH PHỤ THUỘC THƯ VIỆN NGOÀI ---
         const Icons = {
             Trash: () => (
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
@@ -98,7 +94,6 @@
             )
         };
 
-        // Biến môi trường tự động (nếu có sẵn từ server Vercel/Platform)
         let db = null;
         let auth = null;
         let appId = 'room-chore-manager';
@@ -109,7 +104,6 @@
             const [firebaseInputConfig, setFirebaseInputConfig] = useState('');
             const [showConfigModal, setShowConfigModal] = useState(false);
 
-            // 5 thành viên cố định: Tín, Phúc, Hồ, Phong, Bảo
             const [members, setMembers] = useState([
                 { id: 'tin', name: 'Tín', khacCount: 0, exemptTickets: 0 },
                 { id: 'phuc', name: 'Phúc', khacCount: 0, exemptTickets: 0 },
@@ -118,7 +112,6 @@
                 { id: 'bao', name: 'Bảo', khacCount: 0, exemptTickets: 0 }
             ]);
 
-            // Dữ liệu mẫu ban đầu phòng
             const [logs, setLogs] = useState([
                 { id: 'l1', taskId: 'do_rac', subTaskId: null, memberId: 'tin', memberName: 'Tín', date: '29/06', timestamp: Date.now() - 120000 },
                 { id: 'l2', taskId: 'don_ve_sinh', subTaskId: null, memberId: 'phuc', memberName: 'Phúc', date: '29/06', timestamp: Date.now() - 60000 },
@@ -127,7 +120,7 @@
 
             const [activeTaskForLog, setActiveTaskForLog] = useState(null);
             const [customOtherText, setCustomOtherText] = useState('');
-            const [activeTab, setActiveTab] = useState('home'); // 'home' | 'history'
+            const [activeTab, setActiveTab] = useState('home');
 
             const tasks = [
                 { id: 'do_rac', name: 'Đổ rác', icon: Icons.Trash, color: 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-200' },
@@ -141,7 +134,7 @@
                 { id: 'khac_tuy_chinh', name: 'Khác (Tự ghi chú...)' }
             ];
 
-            // Thử khởi tạo Firebase từ cấu hình được lưu trong LocalStorage
+            // Tải cấu hình Firebase từ localStorage
             useEffect(() => {
                 const savedConfig = localStorage.getItem('firebase_custom_config');
                 if (savedConfig) {
@@ -151,7 +144,6 @@
                         console.error("Lỗi khởi tạo Firebase từ bộ nhớ ẩn:", e);
                     }
                 } else {
-                    // Nếu không có Firebase, nạp lịch sử offline
                     const savedMembers = localStorage.getItem('chore_members_fixed');
                     const savedLogs = localStorage.getItem('chore_logs_fixed');
                     if (savedMembers) setMembers(JSON.parse(savedMembers));
@@ -160,30 +152,36 @@
             }, []);
 
             const initFirebaseWithConfig = (config) => {
-                if (firebase.apps.length === 0) {
-                    const app = firebase.initializeApp(config);
+                try {
+                    if (firebase.apps.length === 0) {
+                        firebase.initializeApp(config);
+                    }
                     db = firebase.firestore();
                     auth = firebase.auth();
-                } else {
-                    db = firebase.firestore();
-                    auth = firebase.auth();
-                }
 
-                auth.signInAnonymously().then((cred) => {
-                    setUser(cred.user);
+                    // Đánh dấu kết nối thành công để bắt đầu đồng bộ tức thì
                     setIsFirebaseConnected(true);
-                }).catch(err => {
-                    console.error("Xác thực Firebase thất bại:", err);
-                });
+
+                    // Đăng nhập vô danh chạy ngầm (nếu chưa bật Auth trên Firebase cũng không làm lỗi app)
+                    auth.signInAnonymously()
+                        .then((cred) => {
+                            setUser(cred.user);
+                        })
+                        .catch(err => {
+                            console.warn("Chưa kích hoạt Anonymous Auth trên Firebase Console. Tiếp tục chạy ở chế độ Public Test Mode:", err);
+                        });
+                } catch (e) {
+                    console.error("Lỗi khởi động cấu hình Firebase:", e);
+                }
             };
 
-            // Lắng nghe dữ liệu trực tuyến Realtime nếu Firebase đã được bật
+            // Đồng bộ trực tiếp Realtime qua Firebase Firestore
             useEffect(() => {
-                if (!user || !db) return;
+                if (!db) return;
 
                 const appId = 'room-chore-manager';
                 
-                // Đồng bộ realtime danh sách thành viên phòng
+                // Đồng bộ realtime danh sách thành viên
                 const unsubscribeMembers = db.collection('artifacts').doc(appId).collection('members')
                     .onSnapshot((snapshot) => {
                         const list = [];
@@ -197,12 +195,11 @@
                             });
                             setMembers(sortedList.length > 0 ? sortedList : list);
                         } else {
-                            // Tạo mặc định lên Firestore nếu trống
                             members.forEach(m => {
                                 db.collection('artifacts').doc(appId).collection('members').doc(m.id).set(m);
                             });
                         }
-                    }, err => console.error(err));
+                    }, err => console.error("Lỗi đồng bộ thành viên:", err));
 
                 // Đồng bộ realtime lịch sử dọn dẹp
                 const unsubscribeLogs = db.collection('artifacts').doc(appId).collection('logs')
@@ -211,13 +208,13 @@
                         snapshot.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
                         list.sort((a, b) => b.timestamp - a.timestamp);
                         setLogs(list);
-                    }, err => console.error(err));
+                    }, err => console.error("Lỗi đồng bộ lịch sử dọn:", err));
 
                 return () => {
                     unsubscribeMembers();
                     unsubscribeLogs();
                 };
-            }, [user]);
+            }, [isFirebaseConnected]);
 
             const saveToLocalFallback = (newMembers, newLogs) => {
                 if (!isFirebaseConnected) {
@@ -262,7 +259,6 @@
                     timestamp: Date.now()
                 };
 
-                // Logic: dọn "Việc Khác" đủ 5 lần được thưởng 1 vé miễn đổ rác
                 let updatedMembers = [...members];
                 if (activeTaskForLog.id === 'khac') {
                     updatedMembers = members.map(m => {
@@ -279,7 +275,6 @@
                     });
                 }
 
-                // Nếu đổ rác mà thành viên này có vé dọn, hệ thống tự động kích hoạt vé để dọn miễn phí
                 if (activeTaskForLog.id === 'do_rac' && member.exemptTickets > 0) {
                     updatedMembers = updatedMembers.map(m => {
                         if (m.id === member.id) {
@@ -290,7 +285,6 @@
                     newLog.isExempted = true;
                 }
 
-                // Ghi nhận dữ liệu trực tuyến hoặc offline
                 if (isFirebaseConnected && db) {
                     const appId = 'room-chore-manager';
                     await db.collection('artifacts').doc(appId).collection('logs').doc(newLog.id).set(newLog);
@@ -313,7 +307,7 @@
                     initFirebaseWithConfig(config);
                     setShowConfigModal(false);
                 } catch (e) {
-                    alert("Cấu hình JSON không hợp lệ! Hãy kiểm tra lại dấu nháy hoặc cấu trúc.");
+                    alert("Cấu hình JSON không hợp lệ! Hãy kiểm tra lại định dạng dấu nháy hoặc cấu trúc.");
                 }
             };
 
@@ -431,7 +425,7 @@
                                                     </button>
                                                 </div>
 
-                                                {/* Khu vực cuộn ngang lịch sử dọn dẹp có làm mờ biên (BLUR) */}
+                                                {/* Khu vực cuộn ngang dải lịch sử cuộn blur */}
                                                 <div className="relative pt-2 border-t border-neutral-100 dark:border-neutral-700/50">
                                                     <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-white dark:from-neutral-800 to-transparent pointer-events-none z-10" />
                                                     <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white dark:from-neutral-800 to-transparent pointer-events-none z-10" />
@@ -443,7 +437,7 @@
                                                                     <span className="text-xs text-neutral-500 font-mono tracking-tight">{log.date}</span>
                                                                     <span className="text-neutral-300 dark:text-neutral-600 font-black">/</span>
                                                                     
-                                                                    {/* Tên trong khung bo góc đậm nét giống ảnh vẽ tay */}
+                                                                    {/* Capsule Tên người vẽ tay bo viền đúng ảnh image_bfd393.png */}
                                                                     <div className="bg-white dark:bg-neutral-800 border-2 border-neutral-800 dark:border-neutral-300 px-2.5 py-0.5 rounded-xl text-xs font-bold text-neutral-800 dark:text-neutral-100 shadow-sm">
                                                                         {log.memberName}
                                                                         {log.subTaskName && (
@@ -520,7 +514,6 @@
                                         onClick={() => {
                                             if (confirm("Xoá toàn bộ lịch sử?")) {
                                                 if (isFirebaseConnected && db) {
-                                                    // Nếu dùng online, khuyến nghị dọn thủ công trên bảng điều khiển Firebase để đảm bảo đồng bộ
                                                     alert("Vui lòng dọn dẹp bộ sưu tập trên Firestore Console để tránh xung đột dữ liệu.");
                                                 } else {
                                                     saveToLocalFallback(null, []);
@@ -731,7 +724,6 @@
             );
         }
 
-        // Render React App
         const root = ReactDOM.createRoot(document.getElementById("root"));
         root.render(<App />);
     </script>
