@@ -114,6 +114,7 @@
             const [adminPassword, setAdminPassword] = useState('');
             const [adminError, setAdminError] = useState('');
             const [logToDelete, setLogToDelete] = useState(null); // Lưu log muốn xoá
+            const [confirmReset, setConfirmReset] = useState(false); // Xác nhận reset điểm
 
             const [members, setMembers] = useState([
                 { id: 'tin', name: 'Tín', khacCount: 0, exemptTickets: 0 },
@@ -245,6 +246,27 @@
                 };
             }, [isFirebaseConnected]);
 
+            // Tự động xóa lịch sử cũ hơn 30 ngày (Background task)
+            useEffect(() => {
+                if (!isFirebaseConnected || !db || logs.length === 0) return;
+
+                const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000; // 30 ngày tính bằng milliseconds
+                const now = Date.now();
+                
+                // Lọc ra các log có khoảng thời gian từ lúc tạo đến hiện tại > 30 ngày
+                const oldLogs = logs.filter(log => (now - log.timestamp) > THIRTY_DAYS_MS);
+
+                if (oldLogs.length > 0) {
+                    const batch = db.batch();
+                    oldLogs.forEach(log => {
+                        batch.delete(db.collection('artifacts').doc(appId).collection('logs').doc(log.id));
+                    });
+                    batch.commit().then(() => {
+                        console.log(`Đã tự động dọn dẹp ${oldLogs.length} lịch sử cũ hơn 30 ngày.`);
+                    }).catch(console.error);
+                }
+            }, [logs, isFirebaseConnected]);
+
             const saveToLocalFallback = (newMembers, newLogs) => {
                 if (!isFirebaseConnected) {
                     if (newMembers) {
@@ -353,12 +375,34 @@
             const handleAdminLogin = () => {
                 if (adminPassword === 'phuc9') {
                     setIsAdmin(true);
-                    setShowAdminModal(false);
                     setAdminPassword('');
                     setAdminError('');
+                    setConfirmReset(false);
                 } else {
                     setAdminError('Mật khẩu sai, vui lòng thử lại!');
                 }
+            };
+
+            // Hàm Reset toàn bộ điểm (Khắc phục lỗi dữ liệu ảo bị kẹt)
+            const executeResetPoints = async () => {
+                if (isFirebaseConnected && db) {
+                    try {
+                        const batch = db.batch();
+                        members.forEach(m => {
+                            const ref = db.collection('artifacts').doc(appId).collection('members').doc(m.id);
+                            batch.update(ref, { khacCount: 0, exemptTickets: 0 });
+                        });
+                        await batch.commit();
+                    } catch (err) {
+                        console.error("Lỗi reset", err);
+                    }
+                } else {
+                    const resetMembers = members.map(m => ({ ...m, khacCount: 0, exemptTickets: 0 }));
+                    setMembers(resetMembers);
+                    localStorage.setItem('chore_members_fixed', JSON.stringify(resetMembers));
+                }
+                setConfirmReset(false);
+                setShowAdminModal(false);
             };
 
             // Hàm thực thi xóa log
@@ -809,6 +853,7 @@
                                         onClick={() => {
                                             setShowAdminModal(false);
                                             setAdminError('');
+                                            setConfirmReset(false);
                                         }}
                                         className="p-1 rounded-full bg-neutral-100 dark:bg-neutral-700"
                                     >
@@ -816,35 +861,79 @@
                                     </button>
                                 </div>
 
-                                <p className="text-xs text-neutral-500 leading-relaxed">
-                                    Vui lòng nhập mật khẩu Admin để truy cập chức năng chỉnh sửa và xóa phân công dọn dẹp.
-                                </p>
+                                {!isAdmin ? (
+                                    <>
+                                        <p className="text-xs text-neutral-500 leading-relaxed">
+                                            Vui lòng nhập mật khẩu Admin để truy cập chức năng chỉnh sửa và xóa phân công dọn dẹp.
+                                        </p>
 
-                                <div>
-                                    <input
-                                        type="password"
-                                        placeholder="Nhập mật khẩu..."
-                                        value={adminPassword}
-                                        onChange={(e) => setAdminPassword(e.target.value)}
-                                        className="w-full p-3 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-                                    />
-                                    {adminError && <p className="text-xs text-rose-500 mt-2 font-semibold">{adminError}</p>}
-                                </div>
+                                        <div>
+                                            <input
+                                                type="password"
+                                                placeholder="Nhập mật khẩu..."
+                                                value={adminPassword}
+                                                onChange={(e) => setAdminPassword(e.target.value)}
+                                                className="w-full p-3 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                                            />
+                                            {adminError && <p className="text-xs text-rose-500 mt-2 font-semibold">{adminError}</p>}
+                                        </div>
 
-                                <div className="flex space-x-2 pt-2">
-                                    <button 
-                                        onClick={() => setShowAdminModal(false)}
-                                        className="flex-1 bg-neutral-100 dark:bg-neutral-700 py-2.5 rounded-xl text-xs font-semibold text-neutral-600 dark:text-neutral-300"
-                                    >
-                                        Đóng
-                                    </button>
-                                    <button 
-                                        onClick={handleAdminLogin}
-                                        className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl text-xs font-semibold shadow-md"
-                                    >
-                                        Đăng Nhập
-                                    </button>
-                                </div>
+                                        <div className="flex space-x-2 pt-2">
+                                            <button 
+                                                onClick={() => setShowAdminModal(false)}
+                                                className="flex-1 bg-neutral-100 dark:bg-neutral-700 py-2.5 rounded-xl text-xs font-semibold text-neutral-600 dark:text-neutral-300"
+                                            >
+                                                Đóng
+                                            </button>
+                                            <button 
+                                                onClick={handleAdminLogin}
+                                                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl text-xs font-semibold shadow-md"
+                                            >
+                                                Đăng Nhập
+                                            </button>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="space-y-4">
+                                        <p className="text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 p-3 rounded-xl font-medium">
+                                            ✅ Đã xác thực thành công. Bạn có thể xóa lịch sử nhầm lẫn ở bên ngoài.
+                                        </p>
+
+                                        <div className="border-t border-neutral-100 dark:border-neutral-700 pt-4 space-y-3">
+                                            <div className="space-y-1">
+                                                <h4 className="text-sm font-bold text-neutral-800 dark:text-neutral-200">Sửa lỗi dữ liệu ảo</h4>
+                                                <p className="text-[10px] text-neutral-500">Nếu điểm số "Việc khác" bị kẹt do lỗi xóa thủ công, bạn có thể reset tất cả về 0 tại đây.</p>
+                                            </div>
+                                            
+                                            {!confirmReset ? (
+                                                <button 
+                                                    onClick={() => setConfirmReset(true)}
+                                                    className="w-full bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-500 py-2.5 rounded-xl text-xs font-bold border border-amber-200 dark:border-amber-900 hover:bg-amber-100 transition-colors"
+                                                >
+                                                    Đưa tất cả điểm về 0
+                                                </button>
+                                            ) : (
+                                                <div className="bg-rose-50 dark:bg-rose-950/30 p-3 rounded-xl border border-rose-200 dark:border-rose-900 space-y-2">
+                                                    <p className="text-[11px] font-bold text-rose-600">Chắc chắn xóa điểm thưởng của tất cả mọi người?</p>
+                                                    <div className="flex space-x-2">
+                                                        <button onClick={() => setConfirmReset(false)} className="flex-1 bg-neutral-200 dark:bg-neutral-700 py-2 rounded-lg text-xs font-semibold">Hủy</button>
+                                                        <button onClick={executeResetPoints} className="flex-1 bg-rose-500 text-white py-2 rounded-lg text-xs font-semibold shadow-sm">Xóa điểm</button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <button 
+                                            onClick={() => {
+                                                setIsAdmin(false);
+                                                setShowAdminModal(false);
+                                            }}
+                                            className="w-full bg-neutral-100 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300 py-2.5 rounded-xl text-xs font-bold mt-2"
+                                        >
+                                            Đăng xuất Admin
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
@@ -920,19 +1009,13 @@
 
                         {/* Nút Admin Navigation */}
                         <button 
-                            onClick={() => {
-                                if (isAdmin) {
-                                    setIsAdmin(false); // Đăng xuất nếu đã là Admin
-                                } else {
-                                    setShowAdminModal(true); // Hiển thị khung nhập mật khẩu nếu chưa
-                                }
-                            }}
+                            onClick={() => setShowAdminModal(true)}
                             className={`flex flex-col items-center space-y-1 transition-all duration-300 w-16 ${isAdmin ? 'text-rose-500 font-bold scale-105' : 'text-neutral-400'}`}
                         >
                             <div className={`p-1 px-4 rounded-full ${isAdmin ? 'bg-rose-100 dark:bg-rose-950/40' : ''}`}>
                                 <Icons.Shield />
                             </div>
-                            <span className="text-[10px]">{isAdmin ? 'Thoát' : 'Admin'}</span>
+                            <span className="text-[10px]">Admin</span>
                         </button>
                     </nav>
 
