@@ -53,8 +53,8 @@
         const { useState, useEffect, useRef } = React;
 
         const Icons = {
-            Trash: () => (
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+            Trash: ({ size = 20, className = "" }) => (
+                <svg className={className} xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
             ),
             Sparkles: () => (
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
@@ -74,8 +74,8 @@
             History: () => (
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
             ),
-            Clock: ({ size = 20 }) => (
-                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Clock: ({ size = 20, className = "" }) => (
+                <svg className={className} xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
             ),
             Cloud: () => (
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.5 19A3.5 3.5 0 0 0 21 15.5c0-2.79-2.54-4.5-5-4.5-.42-1.89-1.74-3.5-3.5-4.5-1.57-.9-3.7-.9-5.27 0C5.48 7.5 4.16 9.11 3.74 11c-2.46 0-5 1.71-5 4.5A3.5 3.5 0 0 0 2.2 19h15.3Z"/></svg>
@@ -91,6 +91,9 @@
             ),
             X: () => (
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            ),
+            Shield: () => (
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             )
         };
 
@@ -104,6 +107,13 @@
             const [firebaseInputConfig, setFirebaseInputConfig] = useState('');
             const [showConfigModal, setShowConfigModal] = useState(false);
             const [syncError, setSyncError] = useState('');
+
+            // Trạng thái cho Admin
+            const [isAdmin, setIsAdmin] = useState(false);
+            const [showAdminModal, setShowAdminModal] = useState(false);
+            const [adminPassword, setAdminPassword] = useState('');
+            const [adminError, setAdminError] = useState('');
+            const [logToDelete, setLogToDelete] = useState(null); // Lưu log muốn xoá
 
             const [members, setMembers] = useState([
                 { id: 'tin', name: 'Tín', khacCount: 0, exemptTickets: 0 },
@@ -133,14 +143,11 @@
             // Hàm lọc thông minh cấu hình Firebase từ đoạn text copy
             const extractFirebaseConfig = (rawString) => {
                 try {
-                    // 1. Thử parse trực tiếp xem người dùng có nhập chuẩn JSON không
                     return JSON.parse(rawString);
                 } catch (e) {
                     try {
-                        // 2. Tìm khối object { ... } bên trong đoạn text
                         const match = rawString.match(/\{[\s\S]*\}/);
                         if (match) {
-                            // Dùng new Function để evaluate JS string thành Object (Vượt qua lỗi thiếu ngoặc kép của JSON)
                             const configObj = (new Function('return ' + match[0]))();
                             if (configObj.apiKey && configObj.projectId) {
                                 return configObj;
@@ -158,8 +165,6 @@
                     if (firebase.apps.length === 0) {
                         firebase.initializeApp(config);
                     } else {
-                        // Nếu lỡ nhập sai và nhập lại, app thứ 2 cần init khác đi hoặc xoá cũ
-                        // Trong TH này ta xoá app cũ đi để cấu hình lại
                         await firebase.app().delete();
                         firebase.initializeApp(config);
                     }
@@ -167,7 +172,6 @@
                     db = firebase.firestore();
                     auth = firebase.auth();
 
-                    // Đăng nhập vô danh
                     const cred = await auth.signInAnonymously();
                     setUser(cred.user);
                     setIsFirebaseConnected(true);
@@ -185,7 +189,6 @@
                 }
             };
 
-            // Tải cấu hình Firebase từ localStorage khi mới vào web
             useEffect(() => {
                 const savedConfig = localStorage.getItem('firebase_custom_config');
                 if (savedConfig) {
@@ -195,7 +198,6 @@
                         console.error("Lỗi load cấu hình cũ", e);
                     }
                 } else {
-                    // Load Offline Fallback
                     const savedMembers = localStorage.getItem('chore_members_fixed');
                     const savedLogs = localStorage.getItem('chore_logs_fixed');
                     if (savedMembers) setMembers(JSON.parse(savedMembers));
@@ -203,7 +205,6 @@
                 }
             }, []);
 
-            // Đồng bộ trực tiếp Realtime qua Firebase Firestore (Chỉ chạy khi isFirebaseConnected = true)
             useEffect(() => {
                 if (!isFirebaseConnected || !db) return;
 
@@ -220,7 +221,6 @@
                             });
                             setMembers(sortedList.length > 0 ? sortedList : list);
                         } else {
-                            // Khởi tạo data mẫu lên mây nếu lần đầu chạy
                             members.forEach(m => {
                                 db.collection('artifacts').doc(appId).collection('members').doc(m.id).set(m);
                             });
@@ -314,7 +314,6 @@
                     newLog.isExempted = true;
                 }
 
-                // Ghi dữ liệu
                 if (isFirebaseConnected && db) {
                     try {
                         const batch = db.batch();
@@ -325,7 +324,6 @@
                         await batch.commit();
                     } catch (err) {
                         console.error("Lỗi khi ghi lên cloud", err);
-                        alert("Không thể đồng bộ lên mây. Vui lòng kiểm tra lại Rules của Firestore!");
                     }
                 } else {
                     const updatedLogs = [newLog, ...logs];
@@ -339,10 +337,7 @@
             const handleManualFirebaseConfig = async () => {
                 try {
                     setSyncError('');
-                    // Gọi bộ lọc thông minh
                     const config = extractFirebaseConfig(firebaseInputConfig);
-                    
-                    // Lưu lại
                     localStorage.setItem('firebase_custom_config', JSON.stringify(config));
                     await initFirebaseWithConfig(config);
                     
@@ -352,6 +347,64 @@
                 } catch (e) {
                     setSyncError(e.message || "Cấu hình không hợp lệ! Hãy copy nguyên đoạn code từ Firebase.");
                 }
+            };
+
+            // Hàm đăng nhập Admin
+            const handleAdminLogin = () => {
+                if (adminPassword === 'phuc9') {
+                    setIsAdmin(true);
+                    setShowAdminModal(false);
+                    setAdminPassword('');
+                    setAdminError('');
+                } else {
+                    setAdminError('Mật khẩu sai, vui lòng thử lại!');
+                }
+            };
+
+            // Hàm thực thi xóa log
+            const executeDeleteLog = async () => {
+                if (!logToDelete) return;
+                const log = logToDelete;
+
+                // Khôi phục lại trạng thái của thành viên trước khi xoá (nếu có thể)
+                let updatedMembers = [...members];
+                const memberIndex = updatedMembers.findIndex(m => m.id === log.memberId);
+                if (memberIndex !== -1) {
+                    let m = { ...updatedMembers[memberIndex] };
+                    if (log.taskId === 'khac') {
+                        if (m.khacCount === 0) {
+                            m.khacCount = 4;
+                            m.exemptTickets = Math.max(0, (m.exemptTickets || 0) - 1);
+                        } else {
+                            m.khacCount -= 1;
+                        }
+                    } else if (log.taskId === 'do_rac' && log.isExempted) {
+                        m.exemptTickets = (m.exemptTickets || 0) + 1;
+                    }
+                    updatedMembers[memberIndex] = m;
+                }
+
+                // Thực hiện xóa
+                if (isFirebaseConnected && db) {
+                    try {
+                        const batch = db.batch();
+                        batch.delete(db.collection('artifacts').doc(appId).collection('logs').doc(log.id));
+                        if (memberIndex !== -1) {
+                            batch.set(db.collection('artifacts').doc(appId).collection('members').doc(log.memberId), updatedMembers[memberIndex]);
+                        }
+                        await batch.commit();
+                    } catch (err) {
+                        console.error("Lỗi khi xóa trên cloud", err);
+                    }
+                } else {
+                    const newLogs = logs.filter(l => l.id !== log.id);
+                    setLogs(newLogs);
+                    setMembers(updatedMembers);
+                    localStorage.setItem('chore_logs_fixed', JSON.stringify(newLogs));
+                    localStorage.setItem('chore_members_fixed', JSON.stringify(updatedMembers));
+                }
+
+                setLogToDelete(null); // Đóng modal xác nhận xóa
             };
 
             const getLogsForTask = (taskId) => logs.filter(log => log.taskId === taskId);
@@ -365,7 +418,7 @@
                 <div className="flex flex-col items-center min-h-screen">
                     
                     {/* Header */}
-                    <header className="w-full max-w-md bg-white/70 dark:bg-neutral-800/70 backdrop-blur-md sticky top-0 z-40 px-6 py-4 flex items-center justify-between border-b border-neutral-200/50 dark:border-neutral-700/50 shadow-sm">
+                    <header className="w-full max-w-md bg-white/70 dark:bg-neutral-800/70 backdrop-blur-md sticky top-0 z-30 px-6 py-4 flex items-center justify-between border-b border-neutral-200/50 dark:border-neutral-700/50 shadow-sm">
                         <div className="flex items-center space-x-2">
                             <div className="bg-emerald-600 p-2 rounded-2xl text-white shadow-md shadow-emerald-500/20 relative">
                                 <Icons.Clock size={20} />
@@ -393,7 +446,7 @@
                     </header>
 
                     {/* Main content */}
-                    <main className="w-full max-w-md flex-1 px-4 py-6 pb-24 space-y-6 overflow-y-auto">
+                    <main className="w-full max-w-md flex-1 px-4 py-6 pb-28 space-y-6 overflow-y-auto">
                         
                         {/* Hiển thị lỗi đồng bộ nếu có */}
                         {syncError && (
@@ -416,7 +469,6 @@
                                         Làm <span className="underline font-semibold text-emerald-600">5 lần việc khác</span> (đổ rác bồn rửa, lau bàn...) sẽ nhận ngay <span className="font-bold text-amber-600">1 Vé miễn đổ rác</span> cho lần đổ rác sau!
                                     </p>
 
-                                    {/* Tiến độ thành viên */}
                                     <div className="grid grid-cols-1 gap-2 pt-2 border-t border-emerald-100/50 dark:border-emerald-950/20">
                                         {members.map(m => (
                                             <div key={m.id} className="flex items-center justify-between text-xs bg-white/60 dark:bg-neutral-800/60 p-2.5 rounded-2xl border border-neutral-100 dark:border-neutral-800">
@@ -489,7 +541,7 @@
                                                     <div className="flex items-center space-x-3 overflow-x-auto py-2 px-6 scrollbar-none snap-x">
                                                         {taskLogs.length > 0 ? (
                                                             taskLogs.map(log => (
-                                                                <div key={log.id} className="flex items-center space-x-1.5 shrink-0 bg-neutral-50 dark:bg-neutral-900 px-3 py-2 rounded-2xl border border-neutral-100 dark:border-neutral-800 snap-center">
+                                                                <div key={log.id} className="relative flex items-center space-x-1.5 shrink-0 bg-neutral-50 dark:bg-neutral-900 pl-3 pr-2 py-2 rounded-2xl border border-neutral-100 dark:border-neutral-800 snap-center">
                                                                     <span className="text-xs text-neutral-500 font-mono tracking-tight">{log.date}</span>
                                                                     <span className="text-neutral-300 dark:text-neutral-600 font-black">/</span>
                                                                     
@@ -504,6 +556,17 @@
 
                                                                     {log.isExempted && (
                                                                         <span className="text-[10px] text-amber-600 bg-amber-50 dark:bg-amber-950/30 px-1 py-0.5 rounded font-bold">Miễn rác</span>
+                                                                    )}
+
+                                                                    {/* Nút xóa Admin thu nhỏ cho thanh cuộn ngang */}
+                                                                    {isAdmin && (
+                                                                        <button 
+                                                                            onClick={() => setLogToDelete(log)}
+                                                                            className="ml-1 p-1 bg-rose-100 text-rose-600 rounded-lg hover:bg-rose-200 transition-colors"
+                                                                            title="Xoá lịch sử này"
+                                                                        >
+                                                                            <Icons.Trash size={12} />
+                                                                        </button>
                                                                     )}
                                                                 </div>
                                                             ))
@@ -532,6 +595,9 @@
                                             .sort((a, b) => getMemberStats(b.id) - getMemberStats(a.id))
                                             .map((member, index) => {
                                                 const total = getMemberStats(member.id);
+                                                // Đã làm tròn phần trăm 4 chữ số thập phân theo yêu cầu
+                                                const percentage = logs.length > 0 ? ((total / logs.length) * 100).toFixed(4) : "0.0000";
+                                                
                                                 return (
                                                     <div key={member.id} className="flex items-center space-x-3">
                                                         <span className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs ${
@@ -549,7 +615,7 @@
                                                             <div className="w-full h-1.5 bg-neutral-100 dark:bg-neutral-700 rounded-full overflow-hidden">
                                                                 <div 
                                                                     className="bg-emerald-500 h-full rounded-full transition-all duration-500"
-                                                                    style={{ width: `${logs.length > 0 ? (total / logs.length) * 100 : 0}%` }}
+                                                                    style={{ width: `${percentage}%` }}
                                                                 />
                                                             </div>
                                                         </div>
@@ -586,13 +652,23 @@
                                                                 <p className="text-xs text-neutral-500">{log.subTaskName}</p>
                                                             )}
                                                             <p className="text-[10px] text-neutral-400">{log.date}</p>
+                                                            {log.isExempted && (
+                                                                <span className="inline-block mt-1 bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 text-[10px] px-2.5 py-0.5 rounded-full font-bold">
+                                                                    Được miễn đổ rác
+                                                                </span>
+                                                            )}
                                                         </div>
                                                     </div>
-
-                                                    {log.isExempted && (
-                                                        <span className="bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 text-[10px] px-2.5 py-0.5 rounded-full font-bold">
-                                                            Được miễn đổ rác
-                                                        </span>
+                                                    
+                                                    {/* Nút xóa dành cho Admin */}
+                                                    {isAdmin && (
+                                                        <button 
+                                                            onClick={() => setLogToDelete(log)}
+                                                            className="p-2.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/30 dark:hover:bg-rose-900/50 text-rose-500 rounded-xl transition-all active:scale-95 border border-rose-100 dark:border-rose-900"
+                                                            title="Xoá lịch sử này"
+                                                        >
+                                                            <Icons.Trash />
+                                                        </button>
                                                     )}
                                                 </div>
                                             );
@@ -691,6 +767,88 @@
                         </div>
                     )}
 
+                    {/* Modal xác nhận xóa Log */}
+                    {logToDelete && (
+                        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                            <div className="bg-white dark:bg-neutral-800 w-full max-w-sm rounded-[32px] p-6 space-y-4 shadow-2xl text-center">
+                                <div className="w-16 h-16 bg-rose-100 text-rose-500 dark:bg-rose-950 dark:text-rose-400 rounded-full flex items-center justify-center mx-auto mb-2">
+                                    <Icons.Trash size={32} />
+                                </div>
+                                <h3 className="font-bold text-lg">Xác nhận xóa</h3>
+                                <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                                    Bạn có chắc muốn xóa lịch sử phân công của <b>{logToDelete.memberName}</b> lúc {logToDelete.date}? Việc này sẽ hoàn trả lại thông số (nếu có).
+                                </p>
+                                <div className="flex space-x-2 pt-4">
+                                    <button 
+                                        onClick={() => setLogToDelete(null)}
+                                        className="flex-1 bg-neutral-100 dark:bg-neutral-700 py-3 rounded-xl text-sm font-semibold text-neutral-600 dark:text-neutral-300"
+                                    >
+                                        Hủy
+                                    </button>
+                                    <button 
+                                        onClick={executeDeleteLog}
+                                        className="flex-1 bg-rose-500 hover:bg-rose-600 text-white py-3 rounded-xl text-sm font-semibold shadow-md"
+                                    >
+                                        Có, Xóa
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Modal đăng nhập Admin */}
+                    {showAdminModal && (
+                        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                            <div className="bg-white dark:bg-neutral-800 w-full max-w-sm rounded-[32px] p-6 space-y-4 shadow-2xl">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="font-bold text-base flex items-center space-x-2">
+                                        <Icons.Shield />
+                                        <span>Quản Trị Viên (Admin)</span>
+                                    </h3>
+                                    <button 
+                                        onClick={() => {
+                                            setShowAdminModal(false);
+                                            setAdminError('');
+                                        }}
+                                        className="p-1 rounded-full bg-neutral-100 dark:bg-neutral-700"
+                                    >
+                                        <Icons.X />
+                                    </button>
+                                </div>
+
+                                <p className="text-xs text-neutral-500 leading-relaxed">
+                                    Vui lòng nhập mật khẩu Admin để truy cập chức năng chỉnh sửa và xóa phân công dọn dẹp.
+                                </p>
+
+                                <div>
+                                    <input
+                                        type="password"
+                                        placeholder="Nhập mật khẩu..."
+                                        value={adminPassword}
+                                        onChange={(e) => setAdminPassword(e.target.value)}
+                                        className="w-full p-3 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                                    />
+                                    {adminError && <p className="text-xs text-rose-500 mt-2 font-semibold">{adminError}</p>}
+                                </div>
+
+                                <div className="flex space-x-2 pt-2">
+                                    <button 
+                                        onClick={() => setShowAdminModal(false)}
+                                        className="flex-1 bg-neutral-100 dark:bg-neutral-700 py-2.5 rounded-xl text-xs font-semibold text-neutral-600 dark:text-neutral-300"
+                                    >
+                                        Đóng
+                                    </button>
+                                    <button 
+                                        onClick={handleAdminLogin}
+                                        className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl text-xs font-semibold shadow-md"
+                                    >
+                                        Đăng Nhập
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Modal cấu hình Firebase */}
                     {showConfigModal && (
                         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -742,9 +900,9 @@
                     <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/80 dark:bg-neutral-800/80 backdrop-blur-lg border-t border-neutral-200/50 dark:border-neutral-700/50 px-6 py-3 flex items-center justify-around z-40 rounded-t-3xl shadow-lg">
                         <button 
                             onClick={() => setActiveTab('home')}
-                            className={`flex flex-col items-center space-y-1 transition-all duration-300 ${activeTab === 'home' ? 'text-emerald-600 dark:text-emerald-400 font-bold scale-105' : 'text-neutral-400'}`}
+                            className={`flex flex-col items-center space-y-1 transition-all duration-300 w-16 ${activeTab === 'home' ? 'text-emerald-600 dark:text-emerald-400 font-bold scale-105' : 'text-neutral-400'}`}
                         >
-                            <div className={`p-1 px-6 rounded-full ${activeTab === 'home' ? 'bg-emerald-100 dark:bg-emerald-950/40' : ''}`}>
+                            <div className={`p-1 px-4 rounded-full ${activeTab === 'home' ? 'bg-emerald-100 dark:bg-emerald-950/40' : ''}`}>
                                 <Icons.Clock />
                             </div>
                             <span className="text-[10px]">Chấm công</span>
@@ -752,12 +910,29 @@
 
                         <button 
                             onClick={() => setActiveTab('history')}
-                            className={`flex flex-col items-center space-y-1 transition-all duration-300 ${activeTab === 'history' ? 'text-emerald-600 dark:text-emerald-400 font-bold scale-105' : 'text-neutral-400'}`}
+                            className={`flex flex-col items-center space-y-1 transition-all duration-300 w-16 ${activeTab === 'history' ? 'text-emerald-600 dark:text-emerald-400 font-bold scale-105' : 'text-neutral-400'}`}
                         >
-                            <div className={`p-1 px-6 rounded-full ${activeTab === 'history' ? 'bg-emerald-100 dark:bg-emerald-950/40' : ''}`}>
+                            <div className={`p-1 px-4 rounded-full ${activeTab === 'history' ? 'bg-emerald-100 dark:bg-emerald-950/40' : ''}`}>
                                 <Icons.History />
                             </div>
                             <span className="text-[10px]">Lịch sử</span>
+                        </button>
+
+                        {/* Nút Admin Navigation */}
+                        <button 
+                            onClick={() => {
+                                if (isAdmin) {
+                                    setIsAdmin(false); // Đăng xuất nếu đã là Admin
+                                } else {
+                                    setShowAdminModal(true); // Hiển thị khung nhập mật khẩu nếu chưa
+                                }
+                            }}
+                            className={`flex flex-col items-center space-y-1 transition-all duration-300 w-16 ${isAdmin ? 'text-rose-500 font-bold scale-105' : 'text-neutral-400'}`}
+                        >
+                            <div className={`p-1 px-4 rounded-full ${isAdmin ? 'bg-rose-100 dark:bg-rose-950/40' : ''}`}>
+                                <Icons.Shield />
+                            </div>
+                            <span className="text-[10px]">{isAdmin ? 'Thoát' : 'Admin'}</span>
                         </button>
                     </nav>
 
