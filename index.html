@@ -314,6 +314,17 @@ button:active { transform: translateY(1px); }
   display: grid; place-items: center; flex-shrink: 0;
 }
 
+/* Footer Credit */
+.site-footer {
+  margin: 32px 0 12px; padding-top: 20px;
+  border-top: 1px solid var(--surface-border);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-dim); font-size: 0.75rem;
+}
+.site-footer .made { font-family: var(--font-mono); letter-spacing: 0.02em; display: flex; align-items: center; gap: 5px; }
+.site-footer .heart { display: inline-flex; color: var(--danger); animation: heartbeat 1.6s ease-in-out infinite; transform-origin: center; }
+@keyframes heartbeat { 0%, 100% { transform: scale(1); } 25% { transform: scale(1.18); } 40% { transform: scale(1); } 55% { transform: scale(1.12); } }
+
 /* Bottom Navigation */
 .nav-bar {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
@@ -1168,6 +1179,11 @@ function App() {
             </div>
           </div>
         )}
+
+        {/* Footer Credit */}
+        <div className="site-footer">
+          <span className="made">Made by Hermes Agent with <span className="heart">❤</span></span>
+        </div>
       </main>
 
       {/* Bottom Navigation */}
