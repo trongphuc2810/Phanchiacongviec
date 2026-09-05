@@ -477,6 +477,8 @@ function App() {
   const [logs, setLogs] = useState([]);
   const [activeTaskForLog, setActiveTaskForLog] = useState(null);
   const [customOtherText, setCustomOtherText] = useState('');
+  const [selectedSubtaskId, setSelectedSubtaskId] = useState('');
+  const [customText, setCustomText] = useState('');
   const [activeTab, setActiveTab] = useState('home'); // 'home' | 'monthly' | 'history'
 
   const tasks = [
@@ -705,6 +707,8 @@ function App() {
 
     setActiveTaskForLog(null);
     setCustomOtherText('');
+    setSelectedSubtaskId('');
+    setCustomText('');
   };
 
   const handleManualFirebaseConfig = async () => {
@@ -1017,7 +1021,7 @@ function App() {
                             </div>
                           </div>
                         </div>
-                        <button className="btn-add-log" onClick={() => { setActiveTaskForLog(task); setCustomOtherText(''); }} title="Ghi nhận">
+                        <button className="btn-add-log" onClick={() => { setActiveTaskForLog(task); setCustomOtherText(''); setSelectedSubtaskId(''); setCustomText(''); }} title="Ghi nhận">
                           <Icons.Plus s={18} />
                         </button>
                       </div>
@@ -1208,7 +1212,7 @@ function App() {
 
       {/* Member Selection Modal */}
       {activeTaskForLog && (
-        <div className="modal-overlay" onClick={() => { setActiveTaskForLog(null); setCustomOtherText(''); }}>
+        <div className="modal-overlay" onClick={() => { setActiveTaskForLog(null); setCustomOtherText(''); setSelectedSubtaskId(''); setCustomText(''); }}>
           <div className="modal-sheet" onClick={e => e.stopPropagation()}>
             <div className="sheet-handle" />
             <div className="sheet-header">
@@ -1216,7 +1220,7 @@ function App() {
                 <div className="sheet-title">Ghi nhận: {activeTaskForLog.name}</div>
                 <div className="sheet-desc">Ai vừa hoàn thành việc này?</div>
               </div>
-              <button className="btn-icon" onClick={() => { setActiveTaskForLog(null); setCustomOtherText(''); }}><Icons.X s={16} /></button>
+              <button className="btn-icon" onClick={() => { setActiveTaskForLog(null); setCustomOtherText(''); setSelectedSubtaskId(''); setCustomText(''); }}><Icons.X s={16} /></button>
             </div>
 
             {activeTaskForLog.hasSubtasks && (
@@ -1226,18 +1230,18 @@ function App() {
                   {subTasks.map(sub => (
                     <button
                       key={sub.id}
-                      className={`subtask-btn ${customOtherText === sub.id ? 'selected' : ''}`}
-                      onClick={() => setCustomOtherText(sub.id)}
+                      className={`subtask-btn ${selectedSubtaskId === sub.id ? 'selected' : ''}`}
+                      onClick={() => { setSelectedSubtaskId(sub.id); setCustomText(''); }}
                     >
                       {sub.name}
                     </button>
                   ))}
-                  {customOtherText === 'khac_tuy_chinh' && (
+                  {selectedSubtaskId === 'khac_tuy_chinh' && (
                     <input
                       type="text"
                       placeholder="Nhập việc cụ thể (ví dụ: lau quạt, cọ gương)..."
-                      value={customOtherText === 'khac_tuy_chinh' ? '' : customOtherText}
-                      onChange={e => setCustomOtherText(e.target.value)}
+                      value={customText}
+                      onChange={e => setCustomText(e.target.value)}
                       autoFocus
                     />
                   )}
