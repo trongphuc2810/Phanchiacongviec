@@ -476,7 +476,6 @@ function App() {
 
   const [logs, setLogs] = useState([]);
   const [activeTaskForLog, setActiveTaskForLog] = useState(null);
-  const [customOtherText, setCustomOtherText] = useState('');
   const [selectedSubtaskId, setSelectedSubtaskId] = useState('');
   const [customText, setCustomText] = useState('');
   const [activeTab, setActiveTab] = useState('home'); // 'home' | 'monthly' | 'history'
@@ -642,10 +641,10 @@ function App() {
     
     let subTaskText = null;
     if (activeTaskForLog.id === 'khac') {
-      if (selectedSubTaskId === 'khac_tuy_chinh') {
-        subTaskText = customOtherText.trim() || 'Việc khác';
+      if (selectedSubtaskId === 'khac_tuy_chinh') {
+        subTaskText = customText.trim() || 'Việc khác';
       } else {
-        const found = subTasks.find(s => s.id === selectedSubTaskId);
+        const found = subTasks.find(s => s.id === selectedSubtaskId);
         subTaskText = found ? found.name : 'Việc khác';
       }
     }
@@ -706,7 +705,6 @@ function App() {
     }
 
     setActiveTaskForLog(null);
-    setCustomOtherText('');
     setSelectedSubtaskId('');
     setCustomText('');
   };
@@ -1021,7 +1019,7 @@ function App() {
                             </div>
                           </div>
                         </div>
-                        <button className="btn-add-log" onClick={() => { setActiveTaskForLog(task); setCustomOtherText(''); setSelectedSubtaskId(''); setCustomText(''); }} title="Ghi nhận">
+                        <button className="btn-add-log" onClick={() => { setActiveTaskForLog(task); setSelectedSubtaskId(''); setCustomText(''); }} title="Ghi nhận">
                           <Icons.Plus s={18} />
                         </button>
                       </div>
@@ -1212,7 +1210,7 @@ function App() {
 
       {/* Member Selection Modal */}
       {activeTaskForLog && (
-        <div className="modal-overlay" onClick={() => { setActiveTaskForLog(null); setCustomOtherText(''); setSelectedSubtaskId(''); setCustomText(''); }}>
+        <div className="modal-overlay" onClick={() => { setActiveTaskForLog(null); setSelectedSubtaskId(''); setCustomText(''); }}>
           <div className="modal-sheet" onClick={e => e.stopPropagation()}>
             <div className="sheet-handle" />
             <div className="sheet-header">
@@ -1220,7 +1218,7 @@ function App() {
                 <div className="sheet-title">Ghi nhận: {activeTaskForLog.name}</div>
                 <div className="sheet-desc">Ai vừa hoàn thành việc này?</div>
               </div>
-              <button className="btn-icon" onClick={() => { setActiveTaskForLog(null); setCustomOtherText(''); setSelectedSubtaskId(''); setCustomText(''); }}><Icons.X s={16} /></button>
+              <button className="btn-icon" onClick={() => { setActiveTaskForLog(null); setSelectedSubtaskId(''); setCustomText(''); }}><Icons.X s={16} /></button>
             </div>
 
             {activeTaskForLog.hasSubtasks && (
@@ -1257,12 +1255,16 @@ function App() {
                     key={member.id}
                     className="member-select-btn"
                     onClick={() => {
-                      if (activeTaskForLog.hasSubtasks && !customOtherText) {
+                      if (activeTaskForLog.hasSubtasks && !selectedSubtaskId) {
                         alert('Vui lòng chọn loại việc khác trước!');
                         return;
                       }
+                      if (activeTaskForLog.hasSubtasks && selectedSubtaskId === 'khac_tuy_chinh' && !customText.trim()) {
+                        alert('Vui lòng nhập tên việc cụ thể!');
+                        return;
+                      }
                       const subVal = activeTaskForLog.id === 'khac'
-                        ? (customOtherText === 'do_rac_bon_rua' ? 'do_rac_bon_rua' : customOtherText)
+                        ? (selectedSubtaskId === 'do_rac_bon_rua' ? 'do_rac_bon_rua' : customText.trim() || selectedSubtaskId)
                         : null;
                       handleLogTask(member.id, subVal);
                     }}
